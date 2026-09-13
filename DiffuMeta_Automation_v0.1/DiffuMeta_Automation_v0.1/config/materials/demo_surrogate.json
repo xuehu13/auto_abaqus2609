@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "material_id": "demo_surrogate_v1",
+  "type": "elastic_plastic_table",
+  "source": "Second ordinary Plastic trial in the uploaded handoff; numerical continuation, not experimental UMA90 data",
+  "validated_for_experiment": false,
+  "allow_production_dataset": false,
+  "rate_dependent": false,
+  "density_tonne_mm3": 1.1e-9,
+  "E_MPa": 484.0,
+  "nu": 0.4,
+  "stress_measure": "true_stress",
+  "strain_measure": "equivalent_plastic_strain",
+  "plastic_table_MPa_strain": [[8.0,0.0],[9.5,0.02],[11.0,0.05],[12.5,0.08],[13.5,0.11],[14.2,0.147],[14.5,0.2],[15.0,0.3],[15.6,0.5],[16.3,0.8],[17.0,1.2],[18.0,2.0]],
+  "calibrated_strain_range": null,
+  "note": "A software example only. Do not interpret the last plastic strain as a experimentally validated range."
+}

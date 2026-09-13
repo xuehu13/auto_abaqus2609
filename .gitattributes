@@ -1,0 +1,2 @@
+# Preserve original package/vendor bytes across Windows checkouts and hashes.
+* -text

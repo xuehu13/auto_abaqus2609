@@ -1,0 +1,754 @@
+{
+  "date": "2026-09-13",
+  "baseline": [
+    {
+      "path": "F:\\auto_abaqus\\baseline_test\\fig1_meshcheck.023",
+      "bytes": 8920,
+      "sha256": "1ed2c65f147ae0824a699deb471f0d292ae24c583ed1d200638582f25c5f22ed"
+    },
+    {
+      "path": "F:\\auto_abaqus\\baseline_test\\fig1_meshcheck.cax",
+      "bytes": 2628,
+      "sha256": "01e55c14f95137a598a2c727aedc72c43f69c92f084196a1cd63e1d0b555d578"
+    },
+    {
+      "path": "F:\\auto_abaqus\\baseline_test\\fig1_meshcheck.com",
+      "bytes": 3690,
+      "sha256": "e05145e7e04b793eee0eb8368a2e25b248b0e0b41188607f726f7b46213ae4e1"
+    },
+    {
+      "path": "F:\\auto_abaqus\\baseline_test\\fig1_meshcheck.dat",
+      "bytes": 8269,
+      "sha256": "cfee113d9da779a2f3afb617efe9090fc9d5924f82b17e2949d73ef38f69424e"
+    },
+    {
+      "path": "F:\\auto_abaqus\\baseline_test\\fig1_meshcheck.inp",
+      "bytes": 1024100,
+      "sha256": "42fbc3e6495e9102fb44393b184cbf3cfacd792e2cdbc76ee4177acbb0488057"
+    },
+    {
+      "path": "F:\\auto_abaqus\\baseline_test\\fig1_meshcheck.mdl",
+      "bytes": 789540,
+      "sha256": "9ef15e0a569dcec558b1d3ae84c7016883331899ec21137234026f4039c915a6"
+    },
+    {
+      "path": "F:\\auto_abaqus\\baseline_test\\fig1_meshcheck.msg",
+      "bytes": 1448,
+      "sha256": "f3ff1d1d1d180ef2f46fc7157b7df6f61f043ff10b66aadb430d96cd5210d43d"
+    },
+    {
+      "path": "F:\\auto_abaqus\\baseline_test\\fig1_meshcheck.odb",
+      "bytes": 3016580,
+      "sha256": "192683695829a81b007387dd02becc94d94697148db2dd1f6902607be8efafcf"
+    },
+    {
+      "path": "F:\\auto_abaqus\\baseline_test\\fig1_meshcheck.prt",
+      "bytes": 4451,
+      "sha256": "66a4b8eaa6b8742a1e84f9c991fb104f440fa1024c295ba61b5fbd5c0459075b"
+    },
+    {
+      "path": "F:\\auto_abaqus\\baseline_test\\fig1_meshcheck.sim",
+      "bytes": 1769915,
+      "sha256": "2ebcb88964e93edefa04047363902de6191e271645adff0d13c13ee04dd507cb"
+    },
+    {
+      "path": "F:\\auto_abaqus\\baseline_test\\fig1_meshcheck.stt",
+      "bytes": 72342532,
+      "sha256": "ea326778b355255f84d9e8306358a86c38280c4de5d047518ba7988745164e2c"
+    },
+    {
+      "path": "F:\\auto_abaqus\\baseline_test\\fig1_meshcheck_datacheck_report.json",
+      "bytes": 1394,
+      "sha256": "2ccb4743c948b7b2eaace593011c5e99714bd9d426e277fc96423a46010414f3"
+    },
+    {
+      "path": "F:\\auto_abaqus\\baseline_test\\fig1_meshcheck_export_report.json",
+      "bytes": 842,
+      "sha256": "4d80f3743da4513b218595f5243dcaaf76fa16a80ed495183aaa8029e345d323"
+    },
+    {
+      "path": "F:\\auto_abaqus\\baseline_test\\fig1_periodic_pairs.csv",
+      "bytes": 10703,
+      "sha256": "412ec022147b7969d5bcaf6d8499f9a05b47d74eac9553c653e2f78de5949369"
+    }
+  ],
+  "reference": [
+    {
+      "path": "F:\\auto_abaqus\\reference\\2、abaqus批量曲面建模计算.pdf",
+      "bytes": 14902152,
+      "sha256": "c813e10c7f34eb7a8276cf48a0db87ac15ef7fccc04a357bc685656dd4854cc3"
+    },
+    {
+      "path": "F:\\auto_abaqus\\reference\\42256_2026_1218_MOESM1_ESM.pdf",
+      "bytes": 12549701,
+      "sha256": "3c5a7ac6959e285e5f50e4f37ec3a50294442ae816b61741244dd01ec2f2ebdb"
+    },
+    {
+      "path": "F:\\auto_abaqus\\reference\\AI_HANDOFF_SPEC_Periodic_Surface_Mesher_v1.0.md",
+      "bytes": 40446,
+      "sha256": "371fa0ff0199c7c39144927e53ed867b49170ef7175b9b507bb5d7a6f9ad8f1d"
+    },
+    {
+      "path": "F:\\auto_abaqus\\reference\\periodic_surface_mesher_v1.0_AI_ready.zip",
+      "bytes": 158039,
+      "sha256": "66965c7849dbae3a5e4ad3c84268962f1070108fe329620694faa0c69eaa2989"
+    },
+    {
+      "path": "F:\\auto_abaqus\\reference\\PROJECT_HANDOFF_DiffuMeta_Abaqus_Automation_Full_2026-09-12.md",
+      "bytes": 29728,
+      "sha256": "f13165b8d93aac2c125afbb75c244f49d0897096134b1feb60b582498cab068e"
+    },
+    {
+      "path": "F:\\auto_abaqus\\reference\\PROJECT_HANDOFF_DiffuMeta_Abaqus_Current_State.md",
+      "bytes": 14505,
+      "sha256": "a5f36d25f6f5c3c1938c3858d8ad11fd27de99b92f4c8c814d95ea8379f758d0"
+    },
+    {
+      "path": "F:\\auto_abaqus\\reference\\s42256-026-01218-8.pdf",
+      "bytes": 4155065,
+      "sha256": "0f6db6a0d3d91eb368bd973effe67cdeae885266ebed727cc9e99ca36e01688d"
+    }
+  ],
+  "external_files": [
+    {
+      "path": "F:\\DiffuMeta_Abaqus\\periodic_surface_mesher_clean\\cases\\fig1\\shell\\fig1_shell.npz",
+      "bytes": 356470,
+      "sha256": "ef9197791cbdd5cbfb05d64f1367137279fc09daeafba1ca871c08f1bf5c74ec"
+    },
+    {
+      "path": "F:\\DiffuMeta_Abaqus\\periodic_surface_mesher_clean\\cases\\fig1\\shell\\fig1_shell_report.json",
+      "bytes": 3212,
+      "sha256": "047268c98d682388a3474719b5cb730f1e3f2a83dfcea0d03c45d6dbb34b22e0"
+    },
+    {
+      "path": "F:\\DiffuMeta_Abaqus\\periodic_surface_mesher_clean\\cgal_mesher\\build\\periodic_surface_mesher.exe",
+      "bytes": 1436672,
+      "sha256": "102e27aa34947681b7f7bb60604a12e5f6ab2980998360934c0c5833bec9b0ee"
+    },
+    {
+      "path": "E:\\ABAQUS\\2026temp\\Abaqus_Work\\Fig1_Compression.inp",
+      "bytes": 1152781,
+      "sha256": "5fec18136b9ae9d66981e8a3030cd5db5c9818ada49f95c2cbc915b92eb345b6"
+    },
+    {
+      "path": "E:\\ABAQUS\\2026temp\\Abaqus_Work\\Fig1_Compression.odb",
+      "bytes": 16897560,
+      "sha256": "cc4aa5a407c73a346e49317ec5ab9614137b1fd28447a0b2130c0f7b199d3f51"
+    },
+    {
+      "path": "E:\\ABAQUS\\2026temp\\Abaqus_Work\\Fig1_Compression.dat",
+      "bytes": 23299,
+      "sha256": "a7528394daf1708b3ae3417f63d0a00e299e215611baa3fff034e851c288059f"
+    },
+    {
+      "path": "E:\\ABAQUS\\2026temp\\Abaqus_Work\\Fig1_Compression.msg",
+      "bytes": 599135,
+      "sha256": "4cf9d123d3f6b1c77f3772b83ae7a2a20e53ce2935370de04e256aab9e26bc24"
+    },
+    {
+      "path": "E:\\ABAQUS\\2026temp\\Abaqus_Work\\Fig1_Compression.sta",
+      "bytes": 4458,
+      "sha256": "c0324c0095a0441da421fa08536845975ed9417add39eb0197837bc29caef8f8"
+    },
+    {
+      "path": "E:\\ABAQUS\\2026temp\\Abaqus_Work\\Fig1_Compression.log",
+      "bytes": 658,
+      "sha256": "36fb1800779e2989312b6e9d516d848f61b810e924e0779b33c6a0110ae642da"
+    }
+  ],
+  "additional_reference": [
+    {
+      "path": "C:\\Users\\xuehu\\Downloads\\ADMA-37-2505125-s001.pdf",
+      "bytes": 15761354,
+      "sha256": "eabda8c0788ef050fb7a4bec51e66b3e4e56c856c499c8650089bcc763ead09d"
+    },
+    {
+      "path": "C:\\Users\\xuehu\\Desktop\\gpt总结\\自动划分网格提交ai的文件\\1、复现Abaqus仿真（初步尝试）.pdf",
+      "bytes": 13280368,
+      "sha256": "39a60f6ed9a0454ecd3e2740281c989cd28e97c20f312f756eba16a015de29cd"
+    }
+  ],
+  "vendor_archive_comparison": [
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\AI_HANDOFF_SPEC_v1.0.md",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\REFERENCE_RESULTS.md",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\VERSION.txt",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\06_export_abaqus_meshcheck.py",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\MANIFEST_SHA256.txt",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\.gitignore",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\03_standardize_master_boundaries.py",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\07_validate_abaqus_datacheck.py",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\04_export_cgal_input.py",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\01_build_periodic_topology.py",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\README.md",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\02_extract_master_boundaries.py",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\00_check_python_environment.py",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\05_validate_shell.py",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\environment_geo.yml",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\environment_cgal.yml",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\config\\case.json",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\cases\\.gitkeep",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\docs\\周期隐式曲面自动网格模块_v1.0_零基础源码级完整说明手册.docx",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\cgal_mesher\\CMakeLists.txt",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\cgal_mesher\\expression_parser.hpp",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\cgal_mesher\\main.cpp",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\tools\\run_datacheck_validator.ps1",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\tools\\run_cgal.cmd",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\tools\\run_preprocess.ps1",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\tools\\run_abaqus_datacheck.cmd",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\tools\\build_cgal.cmd",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\tools\\run_postprocess.ps1",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\meshlib\\config.py",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\meshlib\\surface.py",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\meshlib\\flags.py",
+      "exists": true,
+      "equal": true
+    },
+    {
+      "file": "periodic_surface_mesher_v1.0_AI_ready\\meshlib\\__init__.py",
+      "exists": true,
+      "equal": true
+    }
+  ],
+  "external_clean_source_comparison": [
+    {
+      "file": "00_check_python_environment.py",
+      "equal": true
+    },
+    {
+      "file": "01_build_periodic_topology.py",
+      "equal": true
+    },
+    {
+      "file": "02_extract_master_boundaries.py",
+      "equal": true
+    },
+    {
+      "file": "03_standardize_master_boundaries.py",
+      "equal": true
+    },
+    {
+      "file": "04_export_cgal_input.py",
+      "equal": true
+    },
+    {
+      "file": "05_validate_shell.py",
+      "equal": true
+    },
+    {
+      "file": "06_export_abaqus_meshcheck.py",
+      "equal": true
+    },
+    {
+      "file": "07_validate_abaqus_datacheck.py",
+      "equal": true
+    },
+    {
+      "file": "meshlib\\__init__.py",
+      "equal": true
+    },
+    {
+      "file": "meshlib\\config.py",
+      "equal": true
+    },
+    {
+      "file": "meshlib\\flags.py",
+      "equal": true
+    },
+    {
+      "file": "meshlib\\surface.py",
+      "equal": true
+    },
+    {
+      "file": "cgal_mesher\\main.cpp",
+      "equal": true
+    },
+    {
+      "file": "cgal_mesher\\expression_parser.hpp",
+      "equal": true
+    }
+  ],
+  "scaffold_syntax": "PASS",
+  "snapshot": [
+    {
+      "path": "F:\\auto_abaqus\\DiffuMeta_Automation_v0.1\\DiffuMeta_Automation_v0.1\\work\\takeover_20260913_01\\physical_snapshot\\Fig1_Compression.dat",
+      "bytes": 23299,
+      "sha256": "a7528394daf1708b3ae3417f63d0a00e299e215611baa3fff034e851c288059f"
+    },
+    {
+      "path": "F:\\auto_abaqus\\DiffuMeta_Automation_v0.1\\DiffuMeta_Automation_v0.1\\work\\takeover_20260913_01\\physical_snapshot\\Fig1_Compression.inp",
+      "bytes": 1152781,
+      "sha256": "5fec18136b9ae9d66981e8a3030cd5db5c9818ada49f95c2cbc915b92eb345b6"
+    },
+    {
+      "path": "F:\\auto_abaqus\\DiffuMeta_Automation_v0.1\\DiffuMeta_Automation_v0.1\\work\\takeover_20260913_01\\physical_snapshot\\Fig1_Compression.log",
+      "bytes": 658,
+      "sha256": "36fb1800779e2989312b6e9d516d848f61b810e924e0779b33c6a0110ae642da"
+    },
+    {
+      "path": "F:\\auto_abaqus\\DiffuMeta_Automation_v0.1\\DiffuMeta_Automation_v0.1\\work\\takeover_20260913_01\\physical_snapshot\\Fig1_Compression.msg",
+      "bytes": 599135,
+      "sha256": "4cf9d123d3f6b1c77f3772b83ae7a2a20e53ce2935370de04e256aab9e26bc24"
+    },
+    {
+      "path": "F:\\auto_abaqus\\DiffuMeta_Automation_v0.1\\DiffuMeta_Automation_v0.1\\work\\takeover_20260913_01\\physical_snapshot\\Fig1_Compression.odb",
+      "bytes": 16897560,
+      "sha256": "cc4aa5a407c73a346e49317ec5ab9614137b1fd28447a0b2130c0f7b199d3f51"
+    },
+    {
+      "path": "F:\\auto_abaqus\\DiffuMeta_Automation_v0.1\\DiffuMeta_Automation_v0.1\\work\\takeover_20260913_01\\physical_snapshot\\Fig1_Compression.sta",
+      "bytes": 4458,
+      "sha256": "c0324c0095a0441da421fa08536845975ed9417add39eb0197837bc29caef8f8"
+    }
+  ],
+  "manual_shell_comparison": {
+    "nodes": 9483,
+    "elements": 18164,
+    "max_coordinate_difference_mm": 4.804898932064816e-07,
+    "connectivity_equal": true
+  },
+  "runtime_probe": {
+    "abaqus_release": {
+      "argv": [
+        "E:\\ABAQUS\\2026\\Commands\\abaqus.bat",
+        "information=release"
+      ],
+      "returncode": 0,
+      "output": "Abaqus JOB abaqus\r\nAbaqus 2 0 2 6\r\nAbaqus Site ID: \r\nAbaqus is located in the directory e:\\ABAQUS\\2026\\EstProducts e:\\ABAQUS\\2026\\EstProducts\\win_b64 e:\\ABAQUS\\2026\\EstProducts\\win_b64\\code e:\\ABAQUS\\2026\\EstProducts\\win_b64\\code\\bin e:\\ABAQUS\\2026\\EstProducts\\win_b64\\code\\bin\\SMAExternal e:\\ABAQUS\\2026\\EstProducts\\win_b64\\CAEresources e:\\ABAQUS\\2026\\EstProducts\\win_b64\\SMA\r\nSequence Information:\r\n    e:\\ABAQUS\\2026\\EstProducts\\win_b64: 2025_09_23-22.43.03 RELr428 206049\r\nThe Abaqus information files are located in the directory e:\\ABAQUS\\2026\\EstProducts\\win_b64\\SMA\\info\r\n\r\n        Release Notes and Installation & Licensing User Assistance\r\n \r\n   The Release Notes and the installation user assistance are accessible\r\n   from the SIMULIA Established Products documentation.\r\n   They are also accessible at http://help.3ds.com.\r\n   Select the SIMULIA Version for this release, then select\r\n   the SIMULIA Established Products link and click on the section\r\n   on the left. The Release Notes can be found under Abaqus > Release Notes.\r\n   Abaqus installation and licensing information is available\r\n   under Installation, Licensing & Configuration.\r\n \r\n   The list of supported platforms and other system requirements is given\r\n   in the Dassault Systemes Program Directory. The Program Directory is\r\n   additional documentation, similar to release notes, available at\r\n   http://media.3ds.com/support/progdir. Choose SIMULIA as the\r\n   product line and the appropriate level, then choose\r\n   Prerequisites in the left-hand pane. A support contract and private\r\n   login account are required for access.\r\n \r\n   \r\n Abaqus JOB abaqus COMPLETED\r\n"
+    },
+    "abaqus_python": {
+      "argv": [
+        "E:\\ABAQUS\\2026\\Commands\\abaqus.bat",
+        "python",
+        "F:\\auto_abaqus\\DiffuMeta_Automation_v0.1\\DiffuMeta_Automation_v0.1\\work\\takeover_20260913_01\\probe_odb.py"
+      ],
+      "returncode": 0,
+      "output": "{\r\n  \"python\": \"3.10.5 (main, Aug  9 2025, 05:05:40) [MSC v.1934 64 bit (AMD64)]\",\r\n  \"executable\": \"e:\\\\ABAQUS\\\\2026\\\\EstProducts\\\\win_b64\\\\code\\\\bin\\\\SMAPython.exe\",\r\n  \"numpy\": \"1.22.4\",\r\n  \"odb\": \"F:\\\\auto_abaqus\\\\baseline_test\\\\fig1_meshcheck.odb\",\r\n  \"job_status\": \"JOB_STATUS_COMPLETED_SUCCESSFULLY\",\r\n  \"instances\": {\r\n    \"PART-1-1\": {\r\n      \"nodes\": 9483,\r\n      \"elements\": 18164\r\n    }\r\n  },\r\n  \"steps\": {\r\n    \"MESH_CHECK\": {\r\n      \"timePeriod\": 1.0,\r\n      \"frames\": 1,\r\n      \"frame_times\": [\r\n        0.0\r\n      ],\r\n      \"fields\": [\r\n        [\r\n          \"LE\",\r\n          \"RF\",\r\n          \"RM\",\r\n          \"S\",\r\n          \"U\",\r\n          \"UR\"\r\n        ]\r\n      ],\r\n      \"history_regions\": [\r\n        \"Assembly Assembly-1\"\r\n      ]\r\n    }\r\n  }\r\n}\r\n"
+    },
+    "cgal_usage": {
+      "argv": [
+        "F:\\DiffuMeta_Abaqus\\periodic_surface_mesher_clean\\cgal_mesher\\build\\periodic_surface_mesher.exe"
+      ],
+      "returncode": 1,
+      "output": "\r\n================================================\r\nPERIODIC SURFACE MESHER\r\n================================================\r\nUsage:\r\nperiodic_surface_mesher.exe <cgal_case.txt> <feature_file> <output_prefix> [facet_size_override_mm]\r\n"
+    }
+  },
+  "history_audit": {
+    "time_axes_identical": true,
+    "points": 60,
+    "last_time": 1.0,
+    "last_u3_mm": -2.0,
+    "last_compression_strain": 0.2,
+    "last_rf3_N": -31.414018630981445,
+    "curve_qa_for_30_percent": {
+      "status": "CURVE_QA_FAILED",
+      "failures": [
+        "TARGET_RANGE_NOT_REACHED"
+      ],
+      "final_strain": 0.2,
+      "max_ke_ie": 2.2247987229032666e-05,
+      "max_ae_ie": 0.005850738108431478,
+      "energy_floor_Nmm": 1e-08,
+      "low_energy_points": 6,
+      "stress_11_MPa": null,
+      "strain_11": [
+        0.016,
+        0.031,
+        0.055,
+        0.094,
+        0.149,
+        0.165,
+        0.204,
+        0.227,
+        0.267,
+        0.282,
+        0.3
+      ],
+      "dataset_eligible": false,
+      "note": "Curve-only QA; complete solver, contact, PBC and material-domain gates are still required."
+    }
+  },
+  "physical_odb_summary": {
+    "Fig1_Compression": {
+      "job_status": "JOB_STATUS_COMPLETED_SUCCESSFULLY",
+      "instances": {
+        "BOTTOMPLATE": {
+          "nodes": 362,
+          "elements": 324
+        },
+        "PART-1-1": {
+          "nodes": 9483,
+          "elements": 18164
+        },
+        "TOPPLATE": {
+          "nodes": 362,
+          "elements": 324
+        }
+      },
+      "sets": {
+        "RP_BOTTOM": [
+          {
+            "instance": "BOTTOMPLATE",
+            "label": 362,
+            "coordinates": [
+              5.0,
+              5.0,
+              0.0
+            ]
+          }
+        ],
+        "RP_TOP": [
+          {
+            "instance": "TOPPLATE",
+            "label": 362,
+            "coordinates": [
+              5.0,
+              5.0,
+              10.0
+            ]
+          }
+        ],
+        "RP_X_CTRL": [
+          {
+            "instance": "",
+            "label": 1,
+            "coordinates": [
+              15.0,
+              5.0,
+              5.0
+            ]
+          }
+        ],
+        "RP_Y_CTRL": [
+          {
+            "instance": "",
+            "label": 2,
+            "coordinates": [
+              5.0,
+              15.0,
+              5.0
+            ]
+          }
+        ]
+      },
+      "steps": {
+        "Compression": {
+          "time_period": 1.0,
+          "frames": [
+            {
+              "time": 0.0,
+              "fields": [
+                "A",
+                "AC YIELD",
+                "AR",
+                "COPEN    General_Contact_Faces/General_Contact_Faces",
+                "CPRESS   General_Contact_Faces/General_Contact_Faces",
+                "CSHEAR1  General_Contact_Faces/General_Contact_Faces",
+                "CSHEAR2  General_Contact_Faces/General_Contact_Faces",
+                "CSLIP1   General_Contact_Faces/General_Contact_Faces",
+                "CSLIP2   General_Contact_Faces/General_Contact_Faces",
+                "LE",
+                "PE",
+                "PEEQ",
+                "PEMAG",
+                "RF",
+                "RM",
+                "S",
+                "STRAINFREE",
+                "U",
+                "UR",
+                "V",
+                "VR"
+              ]
+            },
+            {
+              "time": 0.8308827877044678,
+              "fields": [
+                "A",
+                "AC YIELD",
+                "AR",
+                "COPEN    General_Contact_Faces/General_Contact_Faces",
+                "CPRESS   General_Contact_Faces/General_Contact_Faces",
+                "CSHEAR1  General_Contact_Faces/General_Contact_Faces",
+                "CSHEAR2  General_Contact_Faces/General_Contact_Faces",
+                "CSLIP1   General_Contact_Faces/General_Contact_Faces",
+                "CSLIP2   General_Contact_Faces/General_Contact_Faces",
+                "LE",
+                "PE",
+                "PEEQ",
+                "PEMAG",
+                "RF",
+                "RM",
+                "S",
+                "U",
+                "UR",
+                "V",
+                "VR"
+              ]
+            },
+            {
+              "time": 1.0,
+              "fields": [
+                "A",
+                "AC YIELD",
+                "AR",
+                "COPEN    General_Contact_Faces/General_Contact_Faces",
+                "CPRESS   General_Contact_Faces/General_Contact_Faces",
+                "CSHEAR1  General_Contact_Faces/General_Contact_Faces",
+                "CSHEAR2  General_Contact_Faces/General_Contact_Faces",
+                "CSLIP1   General_Contact_Faces/General_Contact_Faces",
+                "CSLIP2   General_Contact_Faces/General_Contact_Faces",
+                "LE",
+                "PE",
+                "PEEQ",
+                "PEMAG",
+                "RF",
+                "RM",
+                "S",
+                "U",
+                "UR",
+                "V",
+                "VR"
+              ]
+            }
+          ],
+          "history_regions": [
+            "Assembly ASSEMBLY",
+            "Node ASSEMBLY.1",
+            "Node ASSEMBLY.2",
+            "Node TOPPLATE.362"
+          ]
+        }
+      }
+    },
+    "OneCell_Compression": {
+      "job_status": "JOB_STATUS_UNKNOWN",
+      "instances": {
+        "BOTTOMPLATE": {
+          "nodes": 170,
+          "elements": 144
+        },
+        "SHELL-1": {
+          "nodes": 21980,
+          "elements": 42868
+        },
+        "TOPPLATE": {
+          "nodes": 170,
+          "elements": 144
+        }
+      },
+      "sets": {
+        "RP_BOTTOM": [
+          {
+            "instance": "BOTTOMPLATE",
+            "label": 170,
+            "coordinates": [
+              5.0,
+              5.0,
+              0.0
+            ]
+          }
+        ],
+        "RP_TOP": [
+          {
+            "instance": "TOPPLATE",
+            "label": 170,
+            "coordinates": [
+              5.0,
+              5.0,
+              10.0
+            ]
+          }
+        ],
+        "RP_X_CTRL": [
+          {
+            "instance": "",
+            "label": 1,
+            "coordinates": [
+              15.0,
+              5.0,
+              5.0
+            ]
+          }
+        ],
+        "RP_Y_CTRL": [
+          {
+            "instance": "",
+            "label": 2,
+            "coordinates": [
+              5.0,
+              15.0,
+              5.0
+            ]
+          }
+        ]
+      },
+      "steps": {
+        "Compression": {
+          "time_period": 1.0,
+          "frames": [],
+          "history_regions": [
+            "Node ASSEMBLY.1",
+            "Node ASSEMBLY.2",
+            "Node TOPPLATE.170"
+          ]
+        }
+      }
+    }
+  },
+  "meshcheck_odb": {
+    "python": "3.10.5 (main, Aug  9 2025, 05:05:40) [MSC v.1934 64 bit (AMD64)]",
+    "executable": "e:\\ABAQUS\\2026\\EstProducts\\win_b64\\code\\bin\\SMAPython.exe",
+    "numpy": "1.22.4",
+    "odb": "F:\\auto_abaqus\\baseline_test\\fig1_meshcheck.odb",
+    "job_status": "JOB_STATUS_COMPLETED_SUCCESSFULLY",
+    "instances": {
+      "PART-1-1": {
+        "nodes": 9483,
+        "elements": 18164
+      }
+    },
+    "steps": {
+      "MESH_CHECK": {
+        "timePeriod": 1.0,
+        "frames": 1,
+        "frame_times": [
+          0.0
+        ],
+        "fields": [
+          [
+            "LE",
+            "RF",
+            "RM",
+            "S",
+            "U",
+            "UR"
+          ]
+        ],
+        "history_regions": [
+          "Assembly Assembly-1"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+name: diffumeta_cgal
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - cgal-cpp=6.0.1
+  - cmake
+  - ninja
+  - eigen
+  - boost-cpp

@@ -1,0 +1,9 @@
+name: diffumeta_geo
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - numpy=1.26
+  - scipy
+  - scikit-image
+  - sympy

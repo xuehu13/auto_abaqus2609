@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "is_example": true,
+  "geo_python": "F:/Anaconda/envs/diffumeta_geo/python.exe",
+  "cgal_exe": "F:/DiffuMeta_Abaqus/periodic_surface_mesher_v1.0/cgal_mesher/build/periodic_surface_mesher.exe",
+  "abaqus_launcher": "C:/SIMULIA/Commands/abaqus.bat",
+  "mesher_environment_id": "UNVERIFIED_LOCAL_ENVIRONMENT",
+  "abaqus_release_required": "2026",
+  "cgal_env_path_prefixes": ["F:/Anaconda/envs/diffumeta_cgal/Library/bin"],
+  "note": "Example paths only. Confirm them on the Windows computer. CGAL DLL environment is supplied per subprocess; no global PATH changes. No compiler invocation per case."
+}

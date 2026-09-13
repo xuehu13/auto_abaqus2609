@@ -1,0 +1,3 @@
+Periodic Surface Mesher v1.0
+Validated: 2026-09-12
+Status: Fig.1 end-to-end regression PASS through Abaqus 2026 Data Check.

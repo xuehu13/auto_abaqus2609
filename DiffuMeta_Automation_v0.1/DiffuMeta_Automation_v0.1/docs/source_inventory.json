@@ -1,0 +1,46 @@
+{
+  "date": "2026-09-12",
+  "attachments": [
+    {
+      "filename": "1、复现Abaqus仿真（初步尝试）.pdf",
+      "sha256": "39a60f6ed9a0454ecd3e2740281c989cd28e97c20f312f756eba16a015de29cd",
+      "bytes": 13280368
+    },
+    {
+      "filename": "2、abaqus批量曲面建模计算.pdf",
+      "sha256": "c813e10c7f34eb7a8276cf48a0db87ac15ef7fccc04a357bc685656dd4854cc3",
+      "bytes": 14902152
+    },
+    {
+      "filename": "42256_2026_1218_MOESM1_ESM(4).pdf",
+      "sha256": "3c5a7ac6959e285e5f50e4f37ec3a50294442ae816b61741244dd01ec2f2ebdb",
+      "bytes": 12549701
+    },
+    {
+      "filename": "AI_HANDOFF_SPEC_Periodic_Surface_Mesher_v1.0(2).md",
+      "sha256": "371fa0ff0199c7c39144927e53ed867b49170ef7175b9b507bb5d7a6f9ad8f1d",
+      "bytes": 40446
+    },
+    {
+      "filename": "PROJECT_HANDOFF_DiffuMeta_Abaqus_Automation_Full_2026-09-12(1).md",
+      "sha256": "f13165b8d93aac2c125afbb75c244f49d0897096134b1feb60b582498cab068e",
+      "bytes": 29728
+    },
+    {
+      "filename": "PROJECT_HANDOFF_DiffuMeta_Abaqus_Current_State(2).md",
+      "sha256": "a5f36d25f6f5c3c1938c3858d8ad11fd27de99b92f4c8c814d95ea8379f758d0",
+      "bytes": 14505
+    },
+    {
+      "filename": "periodic_surface_mesher_v1.0_AI_ready(2).zip",
+      "sha256": "66965c7849dbae3a5e4ad3c84268962f1070108fe329620694faa0c69eaa2989",
+      "bytes": 158039
+    },
+    {
+      "filename": "s42256-026-01218-8(4).pdf",
+      "sha256": "0f6db6a0d3d91eb368bd973effe67cdeae885266ebed727cc9e99ca36e01688d",
+      "bytes": 4155065
+    }
+  ],
+  "notes": "Attachment bytes identify the reviewed input versions. Runtime solver binaries and actual Fig.1 results were not included."
+}

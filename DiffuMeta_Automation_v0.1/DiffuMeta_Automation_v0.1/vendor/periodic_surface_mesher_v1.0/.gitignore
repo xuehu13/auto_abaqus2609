@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+cgal_mesher/build/
+cases/*/periodic_topology.npz
+cases/*/master_boundary_curves.npz
+cases/*/standard_boundary_curves.npz
+cases/*/cgal_input/*.txt
+cases/*/cgal_input/*.json
+cases/*/cgal_output/
+cases/*/shell/
+cases/*/abaqus_meshcheck/

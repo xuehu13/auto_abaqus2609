@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "policy_id": "draft_curve_policy_v1",
+  "calibrated_for_production": false,
+  "ke_ie_limit": 0.01,
+  "ae_ie_limit": 0.05,
+  "energy_floor_Nmm": 1e-8,
+  "startup_ke_max_Nmm": 1e-10,
+  "target_strain_tolerance": 1e-7,
+  "strain_monotonic_tolerance": 1e-12,
+  "stress_sign_tolerance_MPa": 1e-8,
+  "duplicate_stress_tolerance_MPa": 1e-8,
+  "note": "Only KE/IE<1% is directly the paper criterion. Other values are visible draft engineering choices needing pilot calibration. This policy checks curves only and cannot admit samples to a production dataset."
+}
