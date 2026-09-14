@@ -2,6 +2,7 @@
 import argparse
 import csv
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -12,12 +13,18 @@ ROOT = Path(__file__).resolve().parent
 
 
 def main():
+    prefix = os.environ.get("CONDA_PREFIX")  # Set by Pixi too; no manager invocation.
+    if (os.environ.get("PIXI_ENVIRONMENT_NAME") != "default" or not prefix
+            or Path(prefix).resolve() != Path(sys.prefix).resolve()):
+        raise PipelineError("PIXI_REQUIRED", "Use pixi run cli <command> from the workspace; system Python is unsupported.")
     parser = argparse.ArgumentParser(description="DiffuMeta v0.1 architecture and preparation tools (no production solve command yet)")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("plan", help="Print the complete planned pipeline and implementation status")
     p = sub.add_parser("prepare-mesher", help="Create a private mesher directory and exact command plan; do not execute it")
     p.add_argument("--case", default=str(ROOT / "config/cases/fig1.json"))
-    p.add_argument("--environment", default=str(ROOT / "config/environment.example.json"))
+    local = ROOT / "config/environment.local.json"
+    p.add_argument("--environment", default=str(local if local.is_file() else ROOT / "config/environment.example.json"))
+    p.add_argument("--cgal-build", help="Build attempt directory produced by build-cgal; optional for preparation only")
     p.add_argument("--vendor", default=str(ROOT / "vendor/periodic_surface_mesher_v1.0"))
     p.add_argument("--out", required=True)
     p = sub.add_parser("prepare-fe", help="Validate mesh contract and write shell/PBC ingredients; no complete physical INP yet")
@@ -47,7 +54,7 @@ def main():
                   "next": ["complete physical INP builder", "version-specific launcher and monitor",
                            "ODB contact/PBC/field extraction", "orchestration, reconciliation, acceptance and export"]}
     elif args.command == "prepare-mesher":
-        result = prepare_mesher(args.vendor, args.case, args.environment, args.out)
+        result = prepare_mesher(args.vendor, args.case, args.environment, args.out, args.cgal_build)
     elif args.command == "prepare-fe":
         from pipeline.prepare_fe import prepare
         result = prepare(args.npz, args.report, args.pairs, args.physics, args.material, args.out)

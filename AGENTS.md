@@ -5,10 +5,17 @@
 - 先读代码根目录的 `docs/PROJECT_STATUS.md`、`docs/LOCAL_ENVIRONMENT.md` 和 `docs/IMPLEMENTATION_PLAN.md`；旧设计/交接是历史证据，不覆盖新查证结果。
 - 冻结 `vendor/periodic_surface_mesher_v1.0`。优先在 `pipeline/` 和 `abaqus_worker/` 外层增加接口，不重写网格算法。必要核心修改必须说明原因并做完整回归。
 - `reference/`、`baseline_test/`、外部旧工程及既有结果只读。新结果使用唯一的 `work/`、`runs/` attempt 目录，拒绝覆盖；保留输入指纹和失败证据。
-- 普通 Python 使用已验证的 `diffumeta_geo`；ODB 仅由兼容的 Abaqus Python 以只读方式打开。不得往普通 Python 安装 odbAccess，不混用两边 NumPy。
+- 普通开发统一使用根目录 Pixi workspace：`default` 是 Python 3.11 主控/测试；`geo` 固定历史 clean Fig.1 的 Python 3.10.21、NumPy 2.2.6、SciPy 1.15.3、scikit-image 0.25.2、SymPy 1.14.0；`cgal` 单独管理构建和运行依赖。版本复现不等于新环境已完成网格回归。不得使用 Anaconda Python、conda.exe 或 conda activate 执行新任务。
+- Abaqus 是外部独立运行时；ODB 仅由兼容的 `abaqus python` 只读打开。不得在 Pixi 安装/导入 odbAccess、abaqus、abaqusConstants，不混用两边 NumPy、PYTHONPATH 和 DLL 环境。
+- `conda-forge`、`conda:`、`conda-meta` 和包仓库 URL 是 Pixi 正常包生态信息，禁止按“Conda 残留”删除。MSVC/Windows SDK 是外部工具链，检查但不自动安装。
 - 不改系统 PATH、系统设置或现有 Conda 环境；依赖缺失先说明并采用项目级方案。本机配置和计算结果不得提交 Git，不添加远程或上传。
 - 分开记录“代码已实现”“逻辑测试通过”“真实 Abaqus 验证通过”。Data Check、正常作业结束、目标应变达到、科学质量验收分别判定。
 - 压缩模式保留 X/Y 周期及自由宏观横向伸缩，不擅加 Z-PBC。材料、接触、厚度、加载等物理参数不得在自动重试中偷偷改变。
 - 发现文档、源码、INP、ODB 不一致时列出来源和差异。未知警告或缺失检查进入待复核，不生成虚假 PASS，不外推未达到的 30% 应力。
-- 当前接管任务只允许环境检查、已有轻量测试和文档整理，不启动完整求解或批量任务；后续按用户新授权及阶段验收执行。
-- 基础测试：在代码根目录运行 `& F:\Anaconda\envs\diffumeta_geo\python.exe -m unittest discover -s tests -v`。权限错误要与代码缺陷分开记录，不为通过检查降低测试要求。
+- 当前阶段允许 Pixi 配置、必要的 scripts 包装、环境检查和已有轻量测试；不移动代码目录、不修改历史证据、不启动完整求解或批量任务、不执行 git commit。完整网格回归和实际编译按后续授权执行。
+- 在工作区根运行 `pixi run check`、`pixi run test`、`pixi run plan`、`pixi run cli-help`。测试包装仍在实际代码根执行原有 unittest。权限错误与代码缺陷分开记录，不降低测试要求。
+- 网格 tasks 由 Pixi 选择 geo；`mesh-env`/`mesh-pre` 使用新的 `--out work/<attempt>`，`mesh-post`/`mesh-check` 还需 `--from-attempt` 并复制输入后处理，拒绝覆盖。`mesh-check` 只运行已有日志校验器，不提交 Abaqus。`build-cgal --check-only` 只检查外部编译工具链；实际构建必须指定新的 `--out`。
+- Pixi 是普通 Python/C++ 唯一支持的环境管理器；依赖只通过 pixi.toml/pixi.lock 管理，不新建旧管理器环境或激活脚本，不新增个人解释器绝对路径，不随意升级 validated geo。系统裸 python 即使指向其他安装也不作为项目入口。
+- 使用 `pixi run cli <现有命令>`；run.py 拒绝非 Pixi default 解释器。prepare-mesher 只生成 argv 列表，以明确 workspace 的 Pixi geo/cgal 前缀选择环境；删除 geo_python 和 DLL 路径配置，不拼接命令字符串或使用 shell=True。
+- environment schema 2 仅有 schema_version、abaqus_launcher、abaqus_release_required；自动优先使用被忽略的 environment.local.json，否则使用 launcher=null 的模板。CGAL 通过 --cgal-build 选择锁文件匹配的构建产物，缺失则计划 argv=null，不回退旧程序。Abaqus 是外部调用描述，不能继承 Pixi 的 Python/DLL 环境。
+- 冻结 vendor/tools、vendor YAML、reference、历史 work/ZIP 和旧交接内的环境说明是 LEGACY，不是活动入口；允许保留原文。当前操作以 README 的 Pixi quick-start 为准。

@@ -1,0 +1,74 @@
+[workspace]
+authors = ["github_xuehu <2021462185@qq.com>"]
+channels = ["conda-forge"]
+name = "auto_abaqus"
+platforms = ["win-64"]
+version = "0.1.0"
+
+[dependencies]
+python = "3.11.*"
+numpy = "==2.2.6"
+
+[activation.env]
+PYTHONNOUSERSITE = "1"
+PYTHONDONTWRITEBYTECODE = "1"
+
+[tasks]
+cli = { cmd = "python -B run.py", cwd = "DiffuMeta_Automation_v0.1/DiffuMeta_Automation_v0.1", description = "All existing CLI commands through Pixi default; paths relative to code root" }
+check = { depends-on = [{ task = "check-default", environment = "default" }, { task = "check-geo", environment = "geo" }, { task = "check-cgal", environment = "cgal" }], description = "Check three Pixi runtimes; never launch Abaqus or build/mesh" }
+check-default = "python -B scripts/pixi_tasks.py check default"
+test = "python -B scripts/pixi_tasks.py test"
+plan = { cmd = "python -B run.py plan", cwd = "DiffuMeta_Automation_v0.1/DiffuMeta_Automation_v0.1" }
+cli-help = { cmd = "python -B run.py --help", cwd = "DiffuMeta_Automation_v0.1/DiffuMeta_Automation_v0.1" }
+prepare-fe = { cmd = "python -B run.py prepare-fe", cwd = "DiffuMeta_Automation_v0.1/DiffuMeta_Automation_v0.1", description = "Existing FE ingredients writer; supply inputs and a NEW --out; no solver" }
+
+# Version evidence: frozen REFERENCE_RESULTS.md, supported by installed metadata.
+# The three scientific packages were pip distributions in the old geo runtime.
+# Pixi now manages their PyPI wheels; no manual pip/Conda activation is needed.
+[feature.geo.dependencies]
+python = "==3.10.21"
+sympy = "==1.14.0"
+mpmath = "==1.4.1"
+
+[feature.geo.pypi-dependencies]
+numpy = "==2.2.6"
+scipy = "==1.15.3"
+scikit-image = "==0.25.2"
+
+[feature.geo.activation.env]
+PYTHONNOUSERSITE = "1"
+PYTHONDONTWRITEBYTECODE = "1"
+
+[feature.geo.tasks]
+check-geo = "python -B scripts/pixi_tasks.py check geo"
+mesh-env = "python -B scripts/pixi_tasks.py mesh env"
+mesh-pre = "python -B scripts/pixi_tasks.py mesh pre"
+mesh-post = "python -B scripts/pixi_tasks.py mesh post"
+mesh-check = { cmd = "python -B scripts/pixi_tasks.py mesh check", description = "Frozen step 07 on COPIED existing datacheck logs; does not submit Abaqus" }
+
+# Old CMakeCache + 2026-09-11 package transaction; keep C++17/MSVC/Release/Ninja.
+# Python here runs only the wrapper. MSVC and Windows SDK remain external.
+[feature.cgal.dependencies]
+python = "==3.10.21"
+cgal-cpp = { version = "==6.0.1", build = "hc4f255e_1" }
+cmake = { version = "==4.4.3", build = "hde52c71_0" }
+ninja = { version = "==1.13.2", build = "h477610d_1" }
+eigen = { version = "==5.0.1", build = "h5112557_3" }
+libboost = { version = "==1.88.0", build = "h9dfe17d_7" }
+libboost-devel = { version = "==1.88.0", build = "h1c1089f_7" }
+libboost-headers = { version = "==1.88.0", build = "h57928b3_7" }
+gmp = { version = "==6.3.0", build = "hbc858fe_3" }
+mpfr = { version = "==4.2.2", build = "hb393127_1" }
+
+[feature.cgal.activation.env]
+PYTHONNOUSERSITE = "1"
+PYTHONDONTWRITEBYTECODE = "1"
+
+[feature.cgal.tasks]
+check-cgal = "python -B scripts/pixi_tasks.py check cgal"
+build-cgal = "python -B scripts/pixi_tasks.py build-cgal"
+
+[environments]
+default = { features = [], solve-group = "controller" }
+geo = { features = ["geo"], no-default-feature = true, solve-group = "validated-geo" }
+cgal = { features = ["cgal"], no-default-feature = true, solve-group = "validated-cgal" }

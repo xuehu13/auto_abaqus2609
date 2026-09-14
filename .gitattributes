@@ -1,2 +1,4 @@
 # Preserve original package/vendor bytes across Windows checkouts and hashes.
 * -text
+# SCM syntax highlighting & preventing 3-way merges
+pixi.lock merge=binary linguist-language=YAML linguist-generated=true -diff

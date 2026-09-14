@@ -1,5 +1,28 @@
 # DiffuMeta Automation v0.1
 
+## 当前活动入口：Pixi
+
+在包含 `pixi.toml` 的工作区根打开终端：
+
+```powershell
+pixi run check
+pixi run test
+pixi run plan
+pixi run cli --help
+pixi run cli prepare-mesher --out work/new_mesh_plan
+```
+
+`cli` 和 `prepare-fe` 的相对路径以实际代码根目录为基准；`mesh-*` 和 `build-cgal` 的路径以工作区根为基准。每次使用新的输出目录。
+已有其他 CLI 功能同样使用 `pixi run cli <命令> ...`。已有网格入口使用 `pixi run mesh-env/mesh-pre/mesh-post/mesh-check ...`，构建入口使用 `pixi run build-cgal ...`；各任务自动选择环境，不需要手动激活或查找 Python。
+
+`config/environment.example.json` 是外部工具模板，`environment.local.json` 只保存本机 Abaqus launcher 与要求版本且不进 Git。旧 schema 会被拒绝。CGAL 是本项目编译产物，使用 `--cgal-build <构建attempt目录>` 选择，不能用环境配置偷偷回退到外部旧 exe。没有构建产物时仍可准备计划，但 CGAL 的 argv=null，明确不可执行。
+
+Pixi 管理普通 Python/C++；Abaqus Python、odbAccess 和 Solver 始终属于外部 Abaqus 运行时。VS Code 的项目解释器已配置；终端统一使用上面的 Pixi 入口。
+
+## 以下为历史 v0.1 交付说明
+
+以下旧环境激活命令、裸 Python 命令、外部旧 exe 建议及旧配置字段均已停用，仅保留交付上下文。不得作为当前 quick-start；正文中的文件格式说明可供参考。
+
 这是可继续开发的**设计骨架与基础工具**。目标是把已有网格模块和手工 Abaqus 物理模型接成可管理的批量系统。当前不会提交真实 Abaqus 求解，也不会生成可直接求解的完整 `physical.inp`。
 
 先读 [完整架构与实施方案](docs/Abaqus_Automation_Design_v1.0.md)。

@@ -65,3 +65,6 @@ abaqus_v6.env
 *.npz
 *.npy
 build/
+# pixi environments
+.pixi/*
+!.pixi/config.toml
