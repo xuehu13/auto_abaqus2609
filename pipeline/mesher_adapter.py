@@ -7,7 +7,14 @@ import shutil
 
 from .common import PipelineError, atomic_json, read_json, safe_id, tree_hash, digest, reserve_directory, file_hash
 
-WORKSPACE = Path(__file__).resolve().parents[3]
+def _find_workspace():
+    """Nearest ancestor containing pixi.toml; never hardcode directory depth."""
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "pixi.toml").is_file():
+            return parent
+    raise RuntimeError("pixi.toml not found in any ancestor of pipeline/")
+
+WORKSPACE = _find_workspace()
 
 
 def external_environment(path):

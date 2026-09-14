@@ -1,8 +1,8 @@
 # DiffuMeta 工作区规则
 
 - 用中文沟通，说明操作目的、实际结果和下一步，面向有工程力学背景的 Python/Codex 新用户。
-- 代码根目录是 `DiffuMeta_Automation_v0.1/DiffuMeta_Automation_v0.1/`；从这里执行 `run.py` 和测试。工作区顶层是本地 Git 根目录。
-- 先读代码根目录的 `docs/PROJECT_STATUS.md`、`docs/LOCAL_ENVIRONMENT.md` 和 `docs/IMPLEMENTATION_PLAN.md`；旧设计/交接是历史证据，不覆盖新查证结果。
+- 代码根目录就是仓库根（历史双层 `DiffuMeta_Automation_v0.1/DiffuMeta_Automation_v0.1/` 包装已于 2026-09-14 移除）；在仓库根执行 `run.py` 和测试，工作区顶层即本地 Git 根目录。
+- 先读 `docs/PROJECT_STATUS.md`、`docs/LOCAL_ENVIRONMENT.md` 和 `docs/IMPLEMENTATION_PLAN.md`；v0.1 原始交付 artifacts 在 `docs/legacy/`；旧设计/交接是历史证据，不覆盖新查证结果。
 - 冻结 `vendor/periodic_surface_mesher_v1.0`。优先在 `pipeline/` 和 `abaqus_worker/` 外层增加接口，不重写网格算法。必要核心修改必须说明原因并做完整回归。
 - `reference/`、`baseline_test/`、外部旧工程及既有结果只读。新结果使用唯一的 `work/`、`runs/` attempt 目录，拒绝覆盖；保留输入指纹和失败证据。
 - 普通开发统一使用根目录 Pixi workspace：`default` 是 Python 3.11 主控/测试；`geo` 固定历史 clean Fig.1 的 Python 3.10.21、NumPy 2.2.6、SciPy 1.15.3、scikit-image 0.25.2、SymPy 1.14.0；`cgal` 单独管理构建和运行依赖。版本复现不等于新环境已完成网格回归。不得使用 Anaconda Python、conda.exe 或 conda activate 执行新任务。

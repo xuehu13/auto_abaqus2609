@@ -20,8 +20,10 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-CODE = ROOT / "DiffuMeta_Automation_v0.1" / "DiffuMeta_Automation_v0.1"
-VENDOR = CODE / "vendor" / "periodic_surface_mesher_v1.0"
+# Since the historical v0.1 packaging layers were removed, the code root IS the
+# workspace root. The alias is kept for the boundary tests and older references.
+CODE = ROOT
+VENDOR = ROOT / "vendor" / "periodic_surface_mesher_v1.0"
 # Validated baseline assertions, NOT a second dependency truth: pixi.toml +
 # pixi.lock are the only dependency configuration. These pins re-check what is
 # actually installed so a silently broken or partially upgraded Pixi env fails
@@ -69,8 +71,8 @@ def vendor_hashes():
 def new_attempt(path):
     out = resolve(path)
     # Direct children only: never create a subdirectory inside historical work.
-    if out.parent not in {(ROOT / "work").resolve(), (CODE / "work").resolve()}:
-        raise ValueError("--out must be a NEW direct child of workspace work/ or code work/")
+    if out.parent != (ROOT / "work").resolve():
+        raise ValueError("--out must be a NEW direct child of the workspace work/")
     out.parent.mkdir(exist_ok=True)
     out.mkdir(exist_ok=False)
     return out

@@ -65,6 +65,10 @@ abaqus_v6.env
 *.npz
 *.npy
 build/
+# Frozen vendor hygiene (merged from the removed v0.1 package .gitignore).
+vendor/**/build/
+vendor/**/cases/*
+!vendor/**/cases/.gitkeep
 # pixi environments
 .pixi/*
 !.pixi/config.toml

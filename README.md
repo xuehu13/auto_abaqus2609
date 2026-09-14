@@ -1,23 +1,42 @@
-# DiffuMeta Automation v0.1
+# DiffuMeta Automation
 
-## 当前活动入口：Pixi
+Abaqus 周期性多孔表面网格自动化与压缩仿真数据流水线：把冻结的 `periodic_surface_mesher v1.0` 网格模块和手工 Abaqus 物理模型接成可管理的批量系统。当前 v0.1 提供隔离网格准备、FE 输入片段、曲线 QA 与状态账本基础；完整物理 INP writer、调度与恢复尚未实现（见 `docs/IMPLEMENTATION_STATUS.md` 与 `docs/PROJECT_STATUS.md`）。
 
-在包含 `pixi.toml` 的工作区根打开终端：
+## 环境：Pixi 是唯一普通环境管理器
+
+依赖只通过根目录 `pixi.toml + pixi.lock` 管理，包含 `default`（主控/测试）、`geo`（validated 网格 Python）、`cgal`（构建/运行依赖）三个环境。不使用 Anaconda、`conda activate` 或系统裸 Python 作为项目入口；`pip install -r` 已废弃（旧文件见 `docs/legacy/requirements_v0.1.txt`）。
+
+Abaqus 始终是外部 vendor runtime：Abaqus Python、odbAccess 与求解器不属于 Pixi 环境，也不得混用两边 NumPy/PYTHONPATH/DLL。本机 launcher 只登记在被 Git 忽略的 `config/environment.local.json`（模板见 `config/environment.example.json`）。
+
+## Quick start
 
 ```powershell
-pixi run check
-pixi run test
-pixi run plan
-pixi run cli --help
-pixi run cli prepare-mesher --out work/new_mesh_plan
+pixi install          # 重建三环境（换机复现入口）
+pixi run check        # 三环境自检；不跑网格、不提交 Abaqus
+pixi run test         # 14 项核心测试 + 8 项 Pixi 边界测试
+pixi run cli --help   # 全部现有 CLI 命令
+pixi run cli prepare-mesher --case config/cases/fig1.json --out work/<新attempt>
+pixi run mesh-pre / mesh-post / mesh-check --out work/<新attempt> [--from-attempt ...]
+pixi run build-cgal --check-only        # 编译工具链检查；实际构建需 --out
 ```
 
-`cli` 和 `prepare-fe` 的相对路径以实际代码根目录为基准；`mesh-*` 和 `build-cgal` 的路径以工作区根为基准。每次使用新的输出目录。
-已有其他 CLI 功能同样使用 `pixi run cli <命令> ...`。已有网格入口使用 `pixi run mesh-env/mesh-pre/mesh-post/mesh-check ...`，构建入口使用 `pixi run build-cgal ...`；各任务自动选择环境，不需要手动激活或查找 Python。
+每次输出必须使用新的 `work/<attempt>` 目录，拒绝覆盖。
 
-`config/environment.example.json` 是外部工具模板，`environment.local.json` 只保存本机 Abaqus launcher 与要求版本且不进 Git。旧 schema 会被拒绝。CGAL 是本项目编译产物，使用 `--cgal-build <构建attempt目录>` 选择，不能用环境配置偷偷回退到外部旧 exe。没有构建产物时仍可准备计划，但 CGAL 的 argv=null，明确不可执行。
+## 目录结构
 
-Pixi 管理普通 Python/C++；Abaqus Python、odbAccess 和 Solver 始终属于外部 Abaqus 运行时。VS Code 的项目解释器已配置；终端统一使用上面的 Pixi 入口。
+| 位置 | 职责 | Git |
+|---|---|---|
+| `run.py`、`pipeline/`、`abaqus_worker/`、`config/`、`tests/` | 活动源码 | tracked |
+| `scripts/` | Pixi 任务包装与迁移边界测试 | tracked |
+| `vendor/periodic_surface_mesher_v1.0/` | **FROZEN** 已验证网格算法（Python 00–07、CGAL C++、meshlib），禁止修改 | tracked |
+| `docs/` | 设计、实施状态与历史证据 | tracked |
+| `docs/legacy/` | v0.1 原始交付 artifacts（`PACKAGE_SHA256_v0.1.json`、`requirements_v0.1.txt`），仅描述旧交付包的包内相对路径，不被任何活动代码引用 | tracked |
+| `pixi.toml`、`pixi.lock` | 依赖与任务唯一真值 | tracked |
+| `AGENTS.md` | AI/贡献者强规则 | tracked |
+| `reference/`、`baseline_test/` | 本地参考资料与验证基线（含大文件），不随仓库分发 | local-only，ignored |
+| `work/`、`.pixi/`、`.vscode/` | 运行输出 / 环境缓存 / 编辑器配置 | generated / ignored |
+
+CGAL 编译产物通过 `--cgal-build <work attempt 目录>` 显式选择，并用 SHA256 与 `pixi.lock` 哈希双重绑定，绝不回退到外部旧 exe。
 
 ## 以下为历史 v0.1 交付说明
 
