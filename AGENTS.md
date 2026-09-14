@@ -15,7 +15,7 @@
 - 当前阶段允许 Pixi 配置、必要的 scripts 包装、环境检查和已有轻量测试；不移动代码目录、不修改历史证据、不启动完整求解或批量任务、不执行 git commit。完整网格回归和实际编译按后续授权执行。
 - 在工作区根运行 `pixi run check`、`pixi run test`、`pixi run plan`、`pixi run cli-help`。测试包装仍在实际代码根执行原有 unittest。权限错误与代码缺陷分开记录，不降低测试要求。
 - 网格 tasks 由 Pixi 选择 geo；`mesh-env`/`mesh-pre` 使用新的 `--out work/<attempt>`，`mesh-post`/`mesh-check` 还需 `--from-attempt` 并复制输入后处理，拒绝覆盖。`mesh-check` 只运行已有日志校验器，不提交 Abaqus。`build-cgal --check-only` 只检查外部编译工具链；实际构建必须指定新的 `--out`。
-- Pixi 是普通 Python/C++ 唯一支持的环境管理器；依赖只通过 pixi.toml/pixi.lock 管理，不新建旧管理器环境或激活脚本，不新增个人解释器绝对路径，不随意升级 validated geo。系统裸 python 即使指向其他安装也不作为项目入口。
+- Pixi 是普通 Python/C++ 唯一支持的环境管理器；依赖只通过 pixi.toml/pixi.lock 管理，不新建旧管理器环境或激活脚本，不新增个人解释器绝对路径，不随意升级 validated geo。系统裸 python 即使指向其他安装也不作为项目入口。pixi.toml + pixi.lock 是依赖版本唯一真值；`scripts/pixi_tasks.py` 中的 GEO/CGAL 版本字典只是 validated baseline 断言，用于让环境静默劣化时显式失败，不是第二配置源。
 - 使用 `pixi run cli <现有命令>`；run.py 拒绝非 Pixi default 解释器。prepare-mesher 只生成 argv 列表，以明确 workspace 的 Pixi geo/cgal 前缀选择环境；删除 geo_python 和 DLL 路径配置，不拼接命令字符串或使用 shell=True。
 - environment schema 2 仅有 schema_version、abaqus_launcher、abaqus_release_required；自动优先使用被忽略的 environment.local.json，否则使用 launcher=null 的模板。CGAL 通过 --cgal-build 选择锁文件匹配的构建产物，缺失则计划 argv=null，不回退旧程序。Abaqus 是外部调用描述，不能继承 Pixi 的 Python/DLL 环境。
 - 冻结 vendor/tools、vendor YAML、reference、历史 work/ZIP 和旧交接内的环境说明是 LEGACY，不是活动入口；允许保留原文。当前操作以 README 的 Pixi quick-start 为准。

@@ -1,5 +1,7 @@
 # 本机环境检查
 
+> LEGACY NOTICE（2026-09-14 加注）：本文写于 Conda→Pixi 迁移之前。第 3、8 节中的 `F:\Anaconda` 解释器命令已停用，仅为当时实测记录；当前唯一活动入口是工作区根的 `pixi run <task>`（见根目录 README 的 Pixi quick-start）。正文内容保持原样未改动。
+
 检查日期：2026-09-13（Asia/Shanghai）。这是本机实测记录，原 `VERIFICATION.md` 记载的 2026-09-12 Linux 测试仍保留为历史记录。
 
 结论：普通 Python 基础开发、真实网格读取、CGAL 程序启动、Abaqus 2026 启动及只读 ODB 提取可用。本次没有提交新 Data Check、完整求解或批次；不能据此宣称求解器生产运行和并发资源已验收。

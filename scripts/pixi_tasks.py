@@ -22,7 +22,12 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 CODE = ROOT / "DiffuMeta_Automation_v0.1" / "DiffuMeta_Automation_v0.1"
 VENDOR = CODE / "vendor" / "periodic_surface_mesher_v1.0"
+# Validated baseline assertions, NOT a second dependency truth: pixi.toml +
+# pixi.lock are the only dependency configuration. These pins re-check what is
+# actually installed so a silently broken or partially upgraded Pixi env fails
+# loudly instead of producing subtly different mesh results.
 GEO = {"numpy": "2.2.6", "scipy": "1.15.3", "skimage": "0.25.2", "sympy": "1.14.0"}
+# Same rule for the CGAL build/runtime packages below.
 CGAL = {"cgal-cpp": "6.0.1", "cmake": "4.4.3", "ninja": "1.13.2",
         "eigen": "5.0.1", "libboost": "1.88.0", "libboost-devel": "1.88.0",
         "libboost-headers": "1.88.0", "gmp": "6.3.0", "mpfr": "4.2.2"}
@@ -254,7 +259,11 @@ def tests():
     child = os.environ.copy()
     child.update(TEMP=str(attempt), TMP=str(attempt), PYTHONDONTWRITEBYTECODE="1")
     run_logged([sys.executable, "-B", "-m", "unittest", "discover", "-s", "tests", "-v"], CODE, attempt, "unittest", child)
+    # Pixi migration boundary tests (old-schema rejection, lock/artifact binding,
+    # attempt protection) must run with the standard entry, not stay orphaned.
+    run_logged([sys.executable, "-B", str(Path(__file__).with_name("test_pixi_tasks.py"))], ROOT, attempt, "pixi_boundary_tests", child)
     print((attempt / "unittest.log").read_text(encoding="utf-8", errors="replace"))
+    print((attempt / "pixi_boundary_tests.log").read_text(encoding="utf-8", errors="replace"))
     print("Test evidence:", attempt)
     return 0
 

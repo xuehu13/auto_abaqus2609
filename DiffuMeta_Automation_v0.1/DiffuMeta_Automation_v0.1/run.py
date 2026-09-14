@@ -1,4 +1,9 @@
-"""Run with ordinary Python 3.10+; --help lists the actually implemented commands."""
+"""Run through 'pixi run cli <command>' from the workspace; --help lists the actually implemented commands.
+
+This entry refuses to run outside the Pixi default environment (PIXI_ENVIRONMENT_NAME
+must be 'default' and CONDA_PREFIX must match sys.prefix). System Python, Anaconda
+Python and any manually activated interpreter are unsupported by design.
+"""
 import argparse
 import csv
 import json
