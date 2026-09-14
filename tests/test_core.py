@@ -7,12 +7,13 @@ import unittest
 
 import numpy as np
 
-from pipeline.common import PipelineError, atomic_json, tree_hash
+from pipeline.common import PipelineError, atomic_json, file_hash, tree_hash
 from pipeline.curve_qa import assess, TARGETS
 from pipeline.diagnostics import classify_messages, completion_evidence, stagnation
 from pipeline.mesh_contract import load_bundle
 from pipeline.mesher_adapter import prepare
 from pipeline.pbc import relations, render_include
+from pipeline.physical_builder import _render_material_section, build as build_physical
 from pipeline.prepare_fe import prepare as prepare_fe
 from pipeline.state import StateStore
 
@@ -169,6 +170,152 @@ class RuntimeTests(unittest.TestCase):
             np.savez(mesh, nodes=nodes, triangles=triangles + 1, **pairs)
             with self.assertRaises(PipelineError):
                 load_bundle(mesh, report)
+
+
+class PhysicalBuilderTests(unittest.TestCase):
+    """The cube surface is a schema fixture; no physical model is built here."""
+
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.addCleanup(self.td.cleanup)
+        td = Path(self.td.name)
+        nodes = np.array([[x, y, z] for z in (0., 1.) for y in (0., 1.) for x in (0., 1.)])
+        triangles = np.array([[0,1,3],[0,3,2],[4,7,5],[4,6,7],
+                              [0,4,5],[0,5,1],[2,3,7],[2,7,6],
+                              [0,2,6],[0,6,4],[1,5,7],[1,7,3]])
+        pairs = {"x_pairs": np.array([[0,1],[2,3],[4,5],[6,7]]),
+                 "y_pairs": np.array([[0,2],[1,3],[4,6],[5,7]]),
+                 "z_pairs": np.array([[0,4],[1,5],[2,6],[3,7]])}
+        self.npz = td / "mesh.npz"
+        np.savez(self.npz, nodes=nodes, triangles=triangles, **pairs)
+        self.report = td / "report.json"
+        atomic_json(self.report, {"pass": True, "test_fixture_only": True, "nodes": 8,
+                                  "triangles": 12, "cell_size_mm": 1., "surface_area_mm2": 6.})
+        self.pairs_csv = td / "pairs.csv"
+        with self.pairs_csv.open("w", newline="") as stream:
+            writer = csv.writer(stream)
+            writer.writerow(["axis", "low_node", "high_node", "dx", "dy", "dz"])
+            for axis, key in zip("XYZ", ("x_pairs", "y_pairs", "z_pairs")):
+                for low, high in pairs[key]:
+                    writer.writerow([axis, low + 1, high + 1, *(nodes[high] - nodes[low])])
+        self.physics = ROOT / "config/physics.example.json"
+        self.material = ROOT / "config/materials/demo_surrogate.json"
+        self.numerics = ROOT / "config/numerics.example.json"
+
+    def build(self, name="build", numerics=None):
+        return build_physical(self.npz, self.report, self.pairs_csv, self.physics,
+                              self.material, numerics or self.numerics, Path(self.td.name) / name)
+
+    def test_output_exists_rejected(self):
+        self.build()
+        with self.assertRaises(PipelineError) as caught:
+            self.build()
+        self.assertEqual(caught.exception.code, "OUTPUT_EXISTS")
+
+    def test_missing_input_fails_before_attempt_creation(self):
+        out = Path(self.td.name) / "never_created"
+        with self.assertRaises(PipelineError) as caught:
+            build_physical(self.npz, self.report, self.pairs_csv, self.physics,
+                           self.material, Path(self.td.name) / "absent_numerics.json", out)
+        self.assertEqual(caught.exception.code, "INPUT_MISSING")
+        self.assertFalse(out.exists())
+
+    def test_unsupported_valid_numerics_is_not_config_invalid(self):
+        bad = json.loads(self.numerics.read_text())
+        bad["procedure"] = "static"
+        bad_path = Path(self.td.name) / "unsupported.json"
+        atomic_json(bad_path, bad)
+        with self.assertRaises(PipelineError) as caught:
+            self.build(name="unsupported", numerics=bad_path)
+        self.assertEqual(caught.exception.code, "NOT_IMPLEMENTED")
+        self.assertFalse((Path(self.td.name) / "unsupported").exists())
+
+    def test_invalid_numerics_fails_before_attempt_creation(self):
+        bad = json.loads(self.numerics.read_text())
+        bad["maximum_increment_s"] = 1e-9
+        bad_path = Path(self.td.name) / "invalid.json"
+        atomic_json(bad_path, bad)
+        out = Path(self.td.name) / "invalid_attempt"
+        with self.assertRaises(PipelineError) as caught:
+            build_physical(self.npz, self.report, self.pairs_csv, self.physics,
+                           self.material, bad_path, out)
+        self.assertEqual(caught.exception.code, "CONFIG_INVALID")
+        self.assertFalse(out.exists())
+
+    def test_numerics_reaches_manifest(self):
+        manifest = self.build()
+        self.assertEqual(manifest["numerics"], json.loads(self.numerics.read_text()))
+        self.assertEqual(manifest["numerics_sha256"], file_hash(self.numerics))
+
+    def test_ingredients_are_not_recomputed(self):
+        manifest = self.build()
+        model_inputs = json.loads((Path(self.td.name) / "build/ingredients/model_inputs.json").read_text())
+        self.assertEqual(manifest["identity"]["model_key"], model_inputs["model_key"])
+        self.assertEqual(manifest["mesh_source_hashes"], model_inputs["mesh_files"])
+        for key in ("L_mm", "A0_mm2", "surface_area_mm2", "thickness_mm", "target_displacement_mm",
+                    "shell_nodes", "shell_elements", "equation_count", "labels"):
+            self.assertEqual(manifest[key], model_inputs[key])
+
+    def test_partial_build_is_not_runnable(self):
+        out = Path(self.td.name) / "build"
+        manifest = self.build()
+        self.assertEqual(manifest["status"], "PHYSICAL_BUILD_PARTIAL")
+        self.assertIs(manifest["dataset_eligible"], False)
+        self.assertIs(manifest["blocks"]["material_section"]["allow_production_dataset"], False)
+        self.assertTrue(manifest["missing_stages"])
+        self.assertNotIn("material/section", " ".join(manifest["missing_stages"]))
+        self.assertTrue((out / "blocks/material_section.inc").is_file())
+        self.assertFalse((out / "physical.inp").exists())
+        self.assertFalse((out / "ingredients/physical.inp").exists())
+
+    def test_material_block_matches_config(self):
+        self.build()
+        block = (Path(self.td.name) / "build/blocks/material_section.inc").read_text()
+        material = json.loads(self.material.read_text())
+        self.assertIn("*Material, name=MAT_SHELL", block)
+        self.assertIn(" " + repr(float(material["density_tonne_mm3"])) + ",", block)
+        self.assertIn(repr(float(material["E_MPa"])) + ", " + repr(float(material["nu"])), block)
+        plastic = block.split("*Plastic\n", 1)[1].split("*Shell Section", 1)[0].strip().splitlines()
+        self.assertEqual([tuple(map(float, row.split(", "))) for row in plastic],
+                         [tuple(map(float, row)) for row in material["plastic_table_MPa_strain"]])
+        self.assertNotIn("allow_production_dataset", block)
+
+    def test_section_thickness_not_recomputed(self):
+        self.build()
+        model_inputs = json.loads((Path(self.td.name) / "build/ingredients/model_inputs.json").read_text())
+        block = (Path(self.td.name) / "build/blocks/material_section.inc").read_text()
+        section = block.split("material=MAT_SHELL\n", 1)[1].splitlines()[0]
+        self.assertTrue(section.startswith(repr(model_inputs["thickness_mm"]) + ", 5"))
+
+    def test_block_deterministic_across_attempts(self):
+        one = self.build("one")
+        two = self.build("two")
+        self.assertEqual(one["blocks"]["material_section"]["sha256"],
+                         two["blocks"]["material_section"]["sha256"])
+        self.assertEqual(one["build_key"], two["build_key"])
+
+    def test_parameter_change_changes_block(self):
+        base = self.build("base")
+        changed = json.loads(self.material.read_text())
+        changed["E_MPa"] = changed["E_MPa"] + 100.0
+        changed_path = Path(self.td.name) / "material_changed.json"
+        atomic_json(changed_path, changed)
+        other = build_physical(self.npz, self.report, self.pairs_csv, self.physics,
+                               changed_path, self.numerics, Path(self.td.name) / "changed")
+        self.assertNotEqual(base["blocks"]["material_section"]["sha256"],
+                            other["blocks"]["material_section"]["sha256"])
+        self.assertNotEqual(base["build_key"], other["build_key"])
+
+    def test_unsupported_material_type_is_not_config_invalid(self):
+        with self.assertRaises(PipelineError) as caught:
+            _render_material_section({"type": "hyperelastic"}, {"thickness_mm": 1.0})
+        self.assertEqual(caught.exception.code, "NOT_IMPLEMENTED")
+
+    def test_invalid_material_structure_is_config_invalid(self):
+        with self.assertRaises(PipelineError) as caught:
+            _render_material_section({"type": "elastic_plastic_table", "density_tonne_mm3": "not-a-number"},
+                                     {"thickness_mm": 1.0})
+        self.assertEqual(caught.exception.code, "CONFIG_INVALID")
 
 
 if __name__ == "__main__":
