@@ -14,10 +14,16 @@
 - 确定性渲染：相同输入跨 attempt 字节一致，SHA256 记录于 manifest 的 `blocks.material_section`。
 - `status=PHYSICAL_BUILD_PARTIAL`；`scaffold_key` 保留、`build_key` 新增；仍无 Abaqus 验证。
 
-### 下一阶段 M1-3（未开始）：rigid platens / RP / BC
-- 禁止手算或硬编码 RP label：一律读取 `model_manifest/model_inputs["labels"]`（Fig.1 实际值：rp_x=9484、rp_y=9485、rp_bottom=9486、rp_top=9487、first_plate_node=9488，由 prepare_fe 按节点数推导）。
-- M1-3 需定义全部 rp_x/rp_y/rp_bottom/rp_top 四个 RP；`lateral_pbc.inc` 已引用 rp_x/rp_y，完整模型不可遗漏。
-- 标签分配审计：无碰撞、无空集合、不与 `pbc_map.json` 中的依赖/代表节点重叠。
+### M1-3a 已完成：rigid platens / control nodes / rigid body
+- `blocks/rigid_platens.inc`：RP_X_CTRL / RP_Y_CTRL 两个 PBC macro control nodes、RP_BOTTOM / RP_TOP 两个 rigid-body reference nodes、deterministic bottom/top rigid platen 网格（R3D4，配置驱动：W=width_factor×L，中心 (L/2,L/2)，z=0/L）与两条 `*Rigid Body` 定义。
+- 标签契约：禁止手算/硬编码 RP label，一律读取 `model_manifest/model_inputs["labels"]`（Fig.1 实际值：rp_x=9484、rp_y=9485、rp_bottom=9486、rp_top=9487、first_plate_node=9488，由 prepare_fe 按节点数推导）；标签安全审计（两两不同、与 shell/plate 范围无碰撞）内置于渲染前。
+- `normal_policy = baseline_shared_connectivity_plus_z_both`（忠实复现手工模型"一个 RigidPlate part 两次平移 instance"的语义：bottom/top 共享同一局部 connectivity，均 +Z 法向）；
+  `normal_policy_status = baseline_reproduction_pending_contact_validation`——SPOS/SNEG、ALL EXTERIOR、General Contact 对刚板的实际 side/domain、初始接触/穿透、以及是否建立 top −Z candidate profile，全部留待 M1-4 Contact 阶段专项验证；不宣称 +Z/+Z 是最优接触设置。
+- RP_X_CTRL DOF1 与 RP_Y_CTRL DOF2 被 lateral PBC equations 作为宏观横向控制自由度使用，**不应被 Boundary 固定**；RP_X/RP_Y 其他 DOF 的处理尚未确定，M1-3b 必须先从成功手工 Fig1_Compression.inp 提取完整 `*Boundary` 证据后再决定。
+- 本阶段无 Boundary / Contact / Step / Loading / Output 关键字；无 physical.inp；无 Abaqus 验证；`dataset_eligible=false`。
+
+### M1-3b 未开始：Boundary Conditions
+- 待办：从手工 Fig1_Compression.inp 提取完整 `*Boundary` 证据（含 RP_BOTTOM 的固定 DOF 集）后再实现；位移加载（RP_TOP U3）属 Step/Loading 阶段。
 
 ## 已实现且经过本地逻辑验证
 

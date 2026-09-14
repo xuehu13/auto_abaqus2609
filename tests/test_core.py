@@ -13,7 +13,7 @@ from pipeline.diagnostics import classify_messages, completion_evidence, stagnat
 from pipeline.mesh_contract import load_bundle
 from pipeline.mesher_adapter import prepare
 from pipeline.pbc import relations, render_include
-from pipeline.physical_builder import _render_material_section, build as build_physical
+from pipeline.physical_builder import _platen_plan, _render_material_section, build as build_physical
 from pipeline.prepare_fe import prepare as prepare_fe
 from pipeline.state import StateStore
 
@@ -178,29 +178,45 @@ class PhysicalBuilderTests(unittest.TestCase):
     def setUp(self):
         self.td = tempfile.TemporaryDirectory()
         self.addCleanup(self.td.cleanup)
-        td = Path(self.td.name)
-        nodes = np.array([[x, y, z] for z in (0., 1.) for y in (0., 1.) for x in (0., 1.)])
+        self.npz, self.report, self.pairs_csv = self._write_bundle("bundle", 1.0)
+        # Builder fixture physics: the platen width must be an exact integer
+        # multiple of mesh_size for the L=1 cube (2.0 / 0.5 -> 4 intervals). The
+        # example file itself (1.8/1.0) is used by the L=10 scale fixture and by
+        # the non-divisible-mesh case.
+        physics = json.loads((ROOT / "config/physics.example.json").read_text())
+        physics["platens"]["width_factor"] = 2.0
+        physics["platens"]["mesh_size_mm"] = 0.5
+        self.physics = Path(self.td.name) / "physics_fixture.json"
+        atomic_json(self.physics, physics)
+        self.material = ROOT / "config/materials/demo_surrogate.json"
+        self.numerics = ROOT / "config/numerics.example.json"
+
+    def _write_bundle(self, name, scale):
+        """Cube mesh scaled by `scale`; schema fixture only, never a Fig.1 result."""
+        td = Path(self.td.name) / name
+        td.mkdir()
+        nodes = np.array([[x * scale, y * scale, z * scale]
+                          for z in (0., 1.) for y in (0., 1.) for x in (0., 1.)])
         triangles = np.array([[0,1,3],[0,3,2],[4,7,5],[4,6,7],
                               [0,4,5],[0,5,1],[2,3,7],[2,7,6],
                               [0,2,6],[0,6,4],[1,5,7],[1,7,3]])
         pairs = {"x_pairs": np.array([[0,1],[2,3],[4,5],[6,7]]),
                  "y_pairs": np.array([[0,2],[1,3],[4,6],[5,7]]),
                  "z_pairs": np.array([[0,4],[1,5],[2,6],[3,7]])}
-        self.npz = td / "mesh.npz"
-        np.savez(self.npz, nodes=nodes, triangles=triangles, **pairs)
-        self.report = td / "report.json"
-        atomic_json(self.report, {"pass": True, "test_fixture_only": True, "nodes": 8,
-                                  "triangles": 12, "cell_size_mm": 1., "surface_area_mm2": 6.})
-        self.pairs_csv = td / "pairs.csv"
-        with self.pairs_csv.open("w", newline="") as stream:
+        npz = td / "mesh.npz"
+        np.savez(npz, nodes=nodes, triangles=triangles, **pairs)
+        report = td / "report.json"
+        atomic_json(report, {"pass": True, "test_fixture_only": True, "nodes": 8,
+                             "triangles": 12, "cell_size_mm": scale,
+                             "surface_area_mm2": 6.0 * scale ** 2})
+        csv_path = td / "pairs.csv"
+        with csv_path.open("w", newline="") as stream:
             writer = csv.writer(stream)
             writer.writerow(["axis", "low_node", "high_node", "dx", "dy", "dz"])
             for axis, key in zip("XYZ", ("x_pairs", "y_pairs", "z_pairs")):
                 for low, high in pairs[key]:
                     writer.writerow([axis, low + 1, high + 1, *(nodes[high] - nodes[low])])
-        self.physics = ROOT / "config/physics.example.json"
-        self.material = ROOT / "config/materials/demo_surrogate.json"
-        self.numerics = ROOT / "config/numerics.example.json"
+        return npz, report, csv_path
 
     def build(self, name="build", numerics=None):
         return build_physical(self.npz, self.report, self.pairs_csv, self.physics,
@@ -265,7 +281,11 @@ class PhysicalBuilderTests(unittest.TestCase):
         self.assertTrue(manifest["missing_stages"])
         self.assertNotIn("material/section", " ".join(manifest["missing_stages"]))
         self.assertTrue((out / "blocks/material_section.inc").is_file())
+        self.assertTrue((out / "blocks/rigid_platens.inc").is_file())
         self.assertFalse((out / "physical.inp").exists())
+        self.assertFalse((out / "boundary_conditions.inc").exists())
+        self.assertFalse((out / "contact.inc").exists())
+        self.assertFalse((out / "step_loading.inc").exists())
         self.assertFalse((out / "ingredients/physical.inp").exists())
 
     def test_material_block_matches_config(self):
@@ -316,6 +336,155 @@ class PhysicalBuilderTests(unittest.TestCase):
             _render_material_section({"type": "elastic_plastic_table", "density_tonne_mm3": "not-a-number"},
                                      {"thickness_mm": 1.0})
         self.assertEqual(caught.exception.code, "CONFIG_INVALID")
+
+    def _labels(self):
+        return {"rp_x": 9, "rp_y": 10, "rp_bottom": 11, "rp_top": 12,
+                "first_plate_node": 13, "first_plate_element": 13}
+
+    def _parse_inc(self, block):
+        nodes, elements, section = {}, {}, None
+        for line in block.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("**"):
+                continue
+            if stripped.startswith("*"):
+                keyword = stripped.split(",")[0].strip().lower()
+                section = {"*node": "nodes", "*element": "elements"}.get(keyword)
+                continue
+            parts = [p.strip() for p in stripped.split(",")]
+            if section == "nodes" and len(parts) == 4:
+                nodes[int(parts[0])] = tuple(map(float, parts[1:]))
+            elif section == "elements" and len(parts) == 5:
+                elements[int(parts[0])] = tuple(map(int, parts[1:]))
+        return nodes, elements
+
+    def test_platen_fig1_scale_geometry(self):
+        npz, report, pairs_csv = self._write_bundle("l10", 10.0)
+        manifest = build_physical(npz, report, pairs_csv, ROOT / "config/physics.example.json",
+                                  self.material, self.numerics, Path(self.td.name) / "l10build")
+        rp = manifest["blocks"]["rigid_platens"]
+        labels = manifest["labels"]
+        self.assertEqual(rp["width_mm"], 18.0)
+        self.assertEqual(rp["intervals_per_side"], 18)
+        self.assertEqual(rp["nodes_per_platen"], 361)
+        self.assertEqual(rp["elements_per_platen"], 324)
+        self.assertEqual(rp["bottom_z_mm"], 0.0)
+        self.assertEqual(rp["top_z_mm"], 10.0)
+        self.assertEqual(rp["xy_extent_mm"], {"x_min_mm": -4.0, "x_max_mm": 14.0,
+                                              "y_min_mm": -4.0, "y_max_mm": 14.0})
+        self.assertEqual(rp["rp_labels"],
+                         {key: labels[key] for key in ("rp_x", "rp_y", "rp_bottom", "rp_top")})
+        self.assertEqual(rp["node_ranges"]["bottom"],
+                         [labels["first_plate_node"], labels["first_plate_node"] + 360])
+        self.assertEqual(rp["node_ranges"]["top"],
+                         [labels["first_plate_node"] + 361, labels["first_plate_node"] + 721])
+        self.assertEqual(rp["element_ranges"]["bottom"],
+                         [labels["first_plate_element"], labels["first_plate_element"] + 323])
+        self.assertEqual(rp["element_ranges"]["top"],
+                         [labels["first_plate_element"] + 324, labels["first_plate_element"] + 647])
+        self.assertEqual(rp["normal_policy"], "baseline_shared_connectivity_plus_z_both")
+
+    def test_platen_rp_coordinates_and_roles(self):
+        manifest = self.build()
+        block = (Path(self.td.name) / "build/blocks/rigid_platens.inc").read_text()
+        labels, L = manifest["labels"], manifest["L_mm"]
+        nodes, _ = self._parse_inc(block)
+        self.assertEqual(nodes[labels["rp_bottom"]], (L / 2, L / 2, 0.0))
+        self.assertEqual(nodes[labels["rp_top"]], (L / 2, L / 2, L))
+        self.assertEqual(nodes[labels["rp_x"]], (1.5 * L, L / 2, L / 2))
+        self.assertEqual(nodes[labels["rp_y"]], (L / 2, 1.5 * L, L / 2))
+        rigid_lines = [line for line in block.splitlines() if line.startswith("*Rigid Body")]
+        self.assertEqual(len(rigid_lines), 2)
+        joined = "\n".join(rigid_lines)
+        self.assertIn("ref node=%d, elset=PLATE_BOTTOM" % labels["rp_bottom"], joined)
+        self.assertIn("ref node=%d, elset=PLATE_TOP" % labels["rp_top"], joined)
+        self.assertNotIn(str(labels["rp_x"]), joined)
+        self.assertNotIn(str(labels["rp_y"]), joined)
+        for nset in ("RP_X_CTRL", "RP_Y_CTRL", "RP_BOTTOM", "RP_TOP"):
+            self.assertIn("*Nset, nset=" + nset, block)
+
+    def test_platen_label_ranges_no_collision(self):
+        manifest = self.build()
+        rp = manifest["blocks"]["rigid_platens"]
+        labels = manifest["labels"]
+        bn, tn = rp["node_ranges"]["bottom"], rp["node_ranges"]["top"]
+        be, te = rp["element_ranges"]["bottom"], rp["element_ranges"]["top"]
+        self.assertEqual(bn[0], labels["first_plate_node"])
+        self.assertEqual(be[0], labels["first_plate_element"])
+        self.assertGreater(bn[0], manifest["shell_nodes"])
+        self.assertGreater(bn[0], max(labels[key] for key in ("rp_x", "rp_y", "rp_bottom", "rp_top")))
+        self.assertGreater(tn[0], bn[1])
+        self.assertGreater(be[0], manifest["shell_elements"])
+        self.assertGreater(te[0], be[1])
+        self.assertEqual(tn[1] - tn[0], bn[1] - bn[0])
+        self.assertEqual(te[1] - te[0], be[1] - be[0])
+
+    def test_platen_normals_and_shared_connectivity(self):
+        manifest = self.build()
+        block = (Path(self.td.name) / "build/blocks/rigid_platens.inc").read_text()
+        nodes, elements = self._parse_inc(block)
+        labels = manifest["labels"]
+        per_platen = manifest["blocks"]["rigid_platens"]["elements_per_platen"]
+        bottom_conn = elements[labels["first_plate_element"]]
+        top_conn = elements[labels["first_plate_element"] + per_platen]
+
+        def normal_z(connection):
+            pts = [np.array(nodes[label]) for label in connection]
+            return float(np.cross(pts[1] - pts[0], pts[2] - pts[0])[2])
+
+        self.assertGreater(normal_z(bottom_conn), 0.0)
+        self.assertGreater(normal_z(top_conn), 0.0)
+        self.assertEqual(normal_z(top_conn), normal_z(bottom_conn))
+        first_node = labels["first_plate_node"]
+        offset = manifest["blocks"]["rigid_platens"]["nodes_per_platen"]
+        self.assertEqual([label - first_node for label in bottom_conn],
+                         [label - first_node - offset for label in top_conn])
+
+    def test_rigid_block_deterministic(self):
+        one = self.build("rigid_one")
+        two = self.build("rigid_two")
+        self.assertEqual(one["blocks"]["rigid_platens"]["sha256"],
+                         two["blocks"]["rigid_platens"]["sha256"])
+        self.assertEqual(one["build_key"], two["build_key"])
+
+    def test_width_change_changes_rigid_block_only(self):
+        base = self.build("wbase")
+        changed = json.loads(self.physics.read_text())
+        changed["platens"]["width_factor"] = 3.0
+        changed_path = Path(self.td.name) / "physics_w3.json"
+        atomic_json(changed_path, changed)
+        other = build_physical(self.npz, self.report, self.pairs_csv, changed_path,
+                               self.material, self.numerics, Path(self.td.name) / "wchanged")
+        self.assertNotEqual(base["blocks"]["rigid_platens"]["sha256"],
+                            other["blocks"]["rigid_platens"]["sha256"])
+        self.assertEqual(base["blocks"]["material_section"]["sha256"],
+                         other["blocks"]["material_section"]["sha256"])
+        self.assertNotEqual(base["build_key"], other["build_key"])
+
+    def test_unsupported_platen_type(self):
+        physics = json.loads(self.physics.read_text())
+        physics["platens"]["type"] = "R3D8"
+        manifest = {"L_mm": 1.0, "shell_nodes": 8, "shell_elements": 12, "labels": self._labels()}
+        with self.assertRaises(PipelineError) as caught:
+            _platen_plan(physics, manifest)
+        self.assertEqual(caught.exception.code, "NOT_IMPLEMENTED")
+
+    def test_invalid_platen_geometry(self):
+        manifest = {"L_mm": 1.0, "shell_nodes": 8, "shell_elements": 12, "labels": self._labels()}
+        for key, value in (("width_factor", 0.0), ("mesh_size_mm", -1.0)):
+            physics = json.loads(self.physics.read_text())
+            physics["platens"][key] = value
+            with self.assertRaises(PipelineError) as caught:
+                _platen_plan(physics, manifest)
+            self.assertEqual(caught.exception.code, "CONFIG_INVALID")
+
+    def test_non_divisible_mesh_not_rounded(self):
+        physics = json.loads((ROOT / "config/physics.example.json").read_text())
+        manifest = {"L_mm": 1.0, "shell_nodes": 8, "shell_elements": 12, "labels": self._labels()}
+        with self.assertRaises(PipelineError) as caught:
+            _platen_plan(physics, manifest)
+        self.assertEqual(caught.exception.code, "NOT_IMPLEMENTED")
+        self.assertIn("exact integer multiple", str(caught.exception))
 
 
 if __name__ == "__main__":
