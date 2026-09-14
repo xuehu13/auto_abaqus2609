@@ -1,5 +1,24 @@
 # v0.1 实施状态与后续接口
 
+## M1 进度（2026-09-14 checkpoint）
+
+### M1-1 已完成：physical builder scaffold
+- `pipeline/physical_builder.py` 与 `run.py build-physical` CLI（Pixi default 守卫不变，现有命令语义未改）。
+- 新 attempt 内生成 `ingredients/`（完全复用现有 `prepare-fe` 产物）与 `model_manifest.json`；拒绝覆盖。
+- numerics 契约校验：参数非法 → `CONFIG_INVALID`；合法但本版未支持 → `NOT_IMPLEMENTED`。
+- 无 physical.inp；无 Abaqus 验证；`dataset_eligible=false`。
+
+### M1-2 已完成：material/section block
+- `blocks/material_section.inc`：Material/Density/Elastic/Plastic + Shell Section（homogeneous，Simpson + 5 个厚度积分点——当前 builder baseline，不是固定科研参数）。
+- 语法基准为已验证手工模型 Fig1_Compression.inp 的对应块；数值全部来自 prepare_fe 验证过的配置，厚度继承 `model_inputs.json`，不重算。
+- 确定性渲染：相同输入跨 attempt 字节一致，SHA256 记录于 manifest 的 `blocks.material_section`。
+- `status=PHYSICAL_BUILD_PARTIAL`；`scaffold_key` 保留、`build_key` 新增；仍无 Abaqus 验证。
+
+### 下一阶段 M1-3（未开始）：rigid platens / RP / BC
+- 禁止手算或硬编码 RP label：一律读取 `model_manifest/model_inputs["labels"]`（Fig.1 实际值：rp_x=9484、rp_y=9485、rp_bottom=9486、rp_top=9487、first_plate_node=9488，由 prepare_fe 按节点数推导）。
+- M1-3 需定义全部 rp_x/rp_y/rp_bottom/rp_top 四个 RP；`lateral_pbc.inc` 已引用 rp_x/rp_y，完整模型不可遗漏。
+- 标签分配审计：无碰撞、无空集合、不与 `pbc_map.json` 中的依赖/代表节点重叠。
+
 ## 已实现且经过本地逻辑验证
 
 | 文件/入口 | 已完成内容 | 不应超出的解释 |

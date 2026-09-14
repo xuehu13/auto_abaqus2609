@@ -1,5 +1,7 @@
 # 本次验证结果
 
+> **当前 checkpoint（2026-09-14，Windows + Pixi）**：`pixi run check` 三环境 PASS；`pixi run test` 35/35 OK（14 项原始核心 + 7 项 builder scaffold + 6 项 material/section block + 8 项 Pixi 迁移边界）；`build-physical` 对真实 Fig.1 mesh bundle 冒烟通过，产物为 `ingredients/`、`blocks/material_section.inc`、`model_manifest.json`，无 physical.inp。此为 **Python builder + real mesh bundle smoke**，不是 Abaqus Physical Data Check。以下 2026-09-12 的 Linux 验证是历史交付记录，不是当前状态。
+
 验证时间：2026-09-12。环境：当前 Linux 工作区的普通 Python；不是用户本地 Windows/Abaqus 2026 环境。
 
 ## 已执行

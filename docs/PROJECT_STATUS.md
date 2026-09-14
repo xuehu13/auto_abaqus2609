@@ -1,5 +1,7 @@
 # 工程已验证状态
 
+> **2026-09-14 development checkpoint（M1-1/M1-2）**：新增 `pipeline/physical_builder.py` 与 `build-physical` CLI。Python builder 已用真实 Fig.1 mesh bundle 冒烟通过（`work/fig1_build_smoke_001`、`work/fig1_build_smoke_002`、`work/fig1_build_checkpoint_001`），生成 `ingredients/`、`blocks/material_section.inc` 与 `model_manifest.json`（`status=PHYSICAL_BUILD_PARTIAL`，`dataset_eligible=false`，无 physical.inp）。以上仅为 **Python builder + real Fig.1 mesh bundle smoke**；**Abaqus Physical Data Check 未执行**，不构成任何 Abaqus 验证。Pixi 下 35/35 测试通过。以下 2026-09-13 接管核查记录保持原样。
+
 核查日期：2026-09-13。范围：工程接管、源资料核对、环境检查、原有轻量测试、现有 ODB 只读检查。未启动任何新 Abaqus Data Check、完整求解或批量计算。
 
 **当前完成的是“冻结的网格模块 + 自动化基础模块 + 一个真实完成到 20% 的手工压缩算例”。完整 30% 压缩验收、完整自动物理 INP writer、监控、恢复和批量主链尚未完成。**

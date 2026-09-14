@@ -12,7 +12,7 @@
 - 分开记录“代码已实现”“逻辑测试通过”“真实 Abaqus 验证通过”。Data Check、正常作业结束、目标应变达到、科学质量验收分别判定。
 - 压缩模式保留 X/Y 周期及自由宏观横向伸缩，不擅加 Z-PBC。材料、接触、厚度、加载等物理参数不得在自动重试中偷偷改变。
 - 发现文档、源码、INP、ODB 不一致时列出来源和差异。未知警告或缺失检查进入待复核，不生成虚假 PASS，不外推未达到的 30% 应力。
-- 当前阶段允许 Pixi 配置、必要的 scripts 包装、环境检查和已有轻量测试；不移动代码目录、不修改历史证据、不启动完整求解或批量任务、不执行 git commit。完整网格回归和实际编译按后续授权执行。
+- 架构或阶段开发开始前必读 `docs/PROJECT_ROADMAP.md`（长期方向与阶段定义）和 `docs/IMPLEMENTATION_PLAN.md`（当前施工顺序与验收）；两者冲突时以 ROADMAP 阶段定义和用户指令为准。仓库结构已定型：不移动代码目录、不修改历史证据、不启动完整求解或批量任务。未经用户明确要求不得 commit/push；用户明确要求 checkpoint 时可以创建本地 commit，但不 push。
 - 在工作区根运行 `pixi run check`、`pixi run test`、`pixi run plan`、`pixi run cli-help`。测试包装仍在实际代码根执行原有 unittest。权限错误与代码缺陷分开记录，不降低测试要求。
 - 网格 tasks 由 Pixi 选择 geo；`mesh-env`/`mesh-pre` 使用新的 `--out work/<attempt>`，`mesh-post`/`mesh-check` 还需 `--from-attempt` 并复制输入后处理，拒绝覆盖。`mesh-check` 只运行已有日志校验器，不提交 Abaqus。`build-cgal --check-only` 只检查外部编译工具链；实际构建必须指定新的 `--out`。
 - Pixi 是普通 Python/C++ 唯一支持的环境管理器；依赖只通过 pixi.toml/pixi.lock 管理，不新建旧管理器环境或激活脚本，不新增个人解释器绝对路径，不随意升级 validated geo。系统裸 python 即使指向其他安装也不作为项目入口。pixi.toml + pixi.lock 是依赖版本唯一真值；`scripts/pixi_tasks.py` 中的 GEO/CGAL 版本字典只是 validated baseline 断言，用于让环境静默劣化时显式失败，不是第二配置源。
