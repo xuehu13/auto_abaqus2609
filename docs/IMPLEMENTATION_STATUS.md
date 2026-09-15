@@ -44,8 +44,19 @@
 - `quasi_static_status=pending_qa`：Dynamic Implicit + Smooth Step 不构成准静态证明，判定留给 QA（ALLKE/ALLIE、曲线振荡、能量平衡）。
 - `status=PHYSICAL_BUILD_PARTIAL`；`dataset_eligible=false`；无 outputs.inc；无 physical.inp；无 Abaqus 验证；`build_key` 已包含六个 block SHA。
 
-### M1-6 未开始：Output Requests
-- 待办：建立独立 `config/outputs.example.json`（field/history 变量与频率全部 config 驱动，Fig.1 输出只是 baseline profile）；生成 `blocks/outputs.inc`（含 `*Restart, write, frequency=0`），按架构插入 step_loading 与 step_end 之间；`FREQUENCY=n` 语义 = 每 n 个 increments 输出一次，不是“生成 n 帧”。
+### M1-6 已完成：Output Requests
+- 新增 `config/outputs.example.json`（schema_version 1，profile_id=`fig1_baseline_outputs_v1`，output policy 独立 config，Fig.1 输出只是 baseline profile）与 CLI `--outputs`（默认该文件）。
+- `blocks/outputs.inc`：`*Restart, write, frequency=0`（restart disabled）+ **1 个 Field group**（PRESELECT frequency=50）+ **2 个 History groups**——Group 1（frequency=1：Energy ALLAE/ALLIE/ALLKE/ALLPD/ALLWK/ETOTAL + RP_TOP RF3/U3 + RP_X_CTRL U1 + RP_Y_CTRL U2）、Group 2（PRESELECT，**显式 frequency=10**）。
+- Group 2 的 frequency=10 = hand baseline 省略 frequency → Abaqus/Standard Dynamic direct-INP documented effective default → automatic writer 显式冻结该有效语义（有意文本差异；官方语义由 Evidence Review 确认）。
+- group-oriented schema：PRESELECT 是 group-level mode；field explicit / element / contact / integrated v1 → NOT_IMPLEMENTED；空 `field_groups`/`history_groups` 不得静默依赖 Abaqus default output → NOT_IMPLEMENTED（explicit requests=[] → CONFIG_INVALID）；未知变量不拒绝（M2 验证）；region 存在性 → M1-7。
+- `_load_outputs` 在 attempt 创建前校验；manifest 记录 parsed outputs snapshot + `outputs_config_sha256`（provenance）+ required_regions/requested_variables（未来 extraction hints）。
+- identity 术语：`model_key`=物理模型身份；`scaffold_key`=当前 pre-output build-input/provenance 身份；`build_key`=build provenance + rendered block identity。outputs 的 config SHA 仅 provenance、block SHA 进 build_key；identity 统一分层留待 batch/cache 阶段（非阻塞债务）。
+- `status=PHYSICAL_BUILD_PARTIAL`；`dataset_eligible=false`；无 physical.inp；无 Abaqus 验证；`build_key` 含七个 block SHA。
+
+### M1-7 未开始：physical.inp assembly + static validation
+- 待办：按 step_loading → outputs → step_end 顺序装配 physical.inp（原子发布）+ static validation（region 引用存在性、`*Step`/`*End Step` 配对、label/集合契约、build_key 一致性）。
+
+## 已实现且经过本地逻辑验证
 
 ## 已实现且经过本地逻辑验证
 

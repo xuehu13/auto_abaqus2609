@@ -3,8 +3,9 @@
 - 用中文沟通，说明操作目的、实际结果和下一步，面向有工程力学背景的 Python/Codex 新用户。
 - 代码根目录就是仓库根（历史双层 `DiffuMeta_Automation_v0.1/DiffuMeta_Automation_v0.1/` 包装已于 2026-09-14 移除）；在仓库根执行 `run.py` 和测试，工作区顶层即本地 Git 根目录。
 - 先读 `docs/PROJECT_STATUS.md`、`docs/LOCAL_ENVIRONMENT.md` 和 `docs/IMPLEMENTATION_PLAN.md`；v0.1 原始交付 artifacts 在 `docs/legacy/`；旧设计/交接是历史证据，不覆盖新查证结果。
+- 新会话/新 AI 首先阅读：`AGENTS.md` → `docs/HANDOFF_CURRENT.md` → `docs/PROJECT_ROADMAP.md` → `docs/PROJECT_STATUS.md` → `docs/LOCAL_ENVIRONMENT.md` → `docs/IMPLEMENTATION_PLAN.md` → `docs/IMPLEMENTATION_STATUS.md`。`HANDOFF_CURRENT.md` 是快速摘要，不覆盖 current Git state、PROJECT_ROADMAP 和用户明确的新指令。
 - 冻结 `vendor/periodic_surface_mesher_v1.0`。优先在 `pipeline/` 和 `abaqus_worker/` 外层增加接口，不重写网格算法。必要核心修改必须说明原因并做完整回归。
-- `reference/`、`baseline_test/`、外部旧工程及既有结果只读。新结果使用唯一的 `work/`、`runs/` attempt 目录，拒绝覆盖；保留输入指纹和失败证据。
+- `reference/`、`baseline_test/`、外部旧工程及既有结果只读。`reference/` 既有内容只读；只有用户明确授权时，允许使用新的唯一文件名加入新的归档证据；绝不覆盖/修改已有 reference 文件；`reference/` 是 Git-ignored local evidence，不属于仓库真值。新结果使用唯一的 `work/`、`runs/` attempt 目录，拒绝覆盖；保留输入指纹和失败证据。
 - 普通开发统一使用根目录 Pixi workspace：`default` 是 Python 3.11 主控/测试；`geo` 固定历史 clean Fig.1 的 Python 3.10.21、NumPy 2.2.6、SciPy 1.15.3、scikit-image 0.25.2、SymPy 1.14.0；`cgal` 单独管理构建和运行依赖。版本复现不等于新环境已完成网格回归。不得使用 Anaconda Python、conda.exe 或 conda activate 执行新任务。
 - Abaqus 是外部独立运行时；ODB 仅由兼容的 `abaqus python` 只读打开。不得在 Pixi 安装/导入 odbAccess、abaqus、abaqusConstants，不混用两边 NumPy、PYTHONPATH 和 DLL 环境。
 - `conda-forge`、`conda:`、`conda-meta` 和包仓库 URL 是 Pixi 正常包生态信息，禁止按“Conda 残留”删除。MSVC/Windows SDK 是外部工具链，检查但不自动安装。

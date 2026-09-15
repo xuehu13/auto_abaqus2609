@@ -8,6 +8,8 @@ Abaqus 周期性多孔表面网格自动化与压缩仿真数据流水线：把�
 
 Abaqus 始终是外部 vendor runtime：Abaqus Python、odbAccess 与求解器不属于 Pixi 环境，也不得混用两边 NumPy/PYTHONPATH/DLL。本机 launcher 只登记在被 Git 忽略的 `config/environment.local.json`（模板见 `config/environment.example.json`）。
 
+接管/新会话：先读 `docs/HANDOFF_CURRENT.md`。
+
 ## Quick start
 
 ```powershell
@@ -22,7 +24,7 @@ pixi run build-cgal --check-only        # 编译工具链检查；实际构建�
 
 每次输出必须使用新的 `work/<attempt>` 目录，拒绝覆盖。
 
-当前 `build-physical` 生成 partial 物理 blocks：`blocks/material_section.inc`、`blocks/rigid_platens.inc`、`blocks/boundary_conditions.inc`、`blocks/contact.inc`、`blocks/step_loading.inc`、`blocks/step_end.inc` 与 `model_manifest.json`。outputs 尚未实现（无 outputs.inc）；仍不生成完整 `physical.inp`，也没有 Abaqus Physical Data Check，不是 production-ready。
+当前 `build-physical` 生成 partial 物理 blocks（7 个）：`blocks/material_section.inc`、`blocks/rigid_platens.inc`、`blocks/boundary_conditions.inc`、`blocks/contact.inc`、`blocks/step_loading.inc`、`blocks/outputs.inc`、`blocks/step_end.inc` 与 `model_manifest.json`。output policy 是独立 config（`--outputs config/outputs.example.json`；Fig.1 输出只是当前 baseline profile）。仍不生成完整 `physical.inp`，也没有 Abaqus Physical Data Check，不是 production-ready。
 
 ## 目录结构
 
