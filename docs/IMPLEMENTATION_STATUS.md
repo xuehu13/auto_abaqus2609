@@ -1,6 +1,6 @@
 # v0.1 实施状态与后续接口
 
-## M1 进度（2026-09-14 checkpoint）
+## M1 进度（M1-1/M1-2 checkpoint 2026-09-14；M1-3a/M1-3b checkpoint 2026-09-15）
 
 ### M1-1 已完成：physical builder scaffold
 - `pipeline/physical_builder.py` 与 `run.py build-physical` CLI（Pixi default 守卫不变，现有命令语义未改）。
@@ -22,8 +22,15 @@
 - RP_X_CTRL DOF1 与 RP_Y_CTRL DOF2 被 lateral PBC equations 作为宏观横向控制自由度使用，**不应被 Boundary 固定**；RP_X/RP_Y 其他 DOF 的处理尚未确定，M1-3b 必须先从成功手工 Fig1_Compression.inp 提取完整 `*Boundary` 证据后再决定。
 - 本阶段无 Boundary / Contact / Step / Loading / Output 关键字；无 physical.inp；无 Abaqus 验证；`dataset_eligible=false`。
 
-### M1-3b 未开始：Boundary Conditions
-- 待办：从手工 Fig1_Compression.inp 提取完整 `*Boundary` 证据（含 RP_BOTTOM 的固定 DOF 集）后再实现；位移加载（RP_TOP U3）属 Step/Loading 阶段。
+### M1-3b 已完成：Boundary Conditions
+- `blocks/boundary_conditions.inc`：RP_BOTTOM DOF1..6 = 0（BC_BOTTOM_FIXED 语义）；RP_TOP DOF1,2,4,5,6 = 0（BC_TOP_GUIDE 语义）；RP_TOP DOF3 保留给 Step/Loading（非零 U3 属未来里程碑，block 内不存在）。
+- RP_X_CTRL / RP_Y_CTRL 无任何 Boundary（手工 baseline 证据：其 DOF1/DOF2 被 lateral PBC equations 用作宏观横向控制自由度）；整块零出现有测试保证。
+- 渲染与 loading 参数完全解耦：`target_compression_strain 0.30→0.20` 时 block 字节不变（有测试）；无 AMPLITUDE/OP/TYPE/非零 magnitude。
+- `status=PHYSICAL_BUILD_PARTIAL`；`dataset_eligible=false`；无 physical.inp；无 Abaqus 验证。`build_key` 已包含三个 block SHA。
+- 备注（非本阶段任务）：手工 Compression Step 内以 `*Boundary, amplitude=AMP_COMPRESSION` 重申 RP_TOP guide 并施加 U3=−2；Abaqus 默认 OP=MOD，model 级 zero guide 持续有效，未来 Step/Loading 里程碑可自行决定仅加 U3 或完整重申。
+
+### M1-4 未开始：Contact
+- 待办：先从手工 INP 提取 `*Surface`/`*Contact`/`*Contact Inclusions`/`*Contact Property Assignment` 完整证据；兑现 `normal_policy_status=pending_contact_validation`（SPOS/SNEG、ALL EXTERIOR、刚板 side/domain、初始接触/穿透审计）。
 
 ## 已实现且经过本地逻辑验证
 

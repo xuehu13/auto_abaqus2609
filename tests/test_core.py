@@ -13,7 +13,8 @@ from pipeline.diagnostics import classify_messages, completion_evidence, stagnat
 from pipeline.mesh_contract import load_bundle
 from pipeline.mesher_adapter import prepare
 from pipeline.pbc import relations, render_include
-from pipeline.physical_builder import _platen_plan, _render_material_section, build as build_physical
+from pipeline.physical_builder import (_platen_plan, _render_boundary_conditions,
+                                       _render_material_section, build as build_physical)
 from pipeline.prepare_fe import prepare as prepare_fe
 from pipeline.state import StateStore
 
@@ -459,6 +460,8 @@ class PhysicalBuilderTests(unittest.TestCase):
                             other["blocks"]["rigid_platens"]["sha256"])
         self.assertEqual(base["blocks"]["material_section"]["sha256"],
                          other["blocks"]["material_section"]["sha256"])
+        self.assertEqual(base["blocks"]["boundary_conditions"]["sha256"],
+                         other["blocks"]["boundary_conditions"]["sha256"])
         self.assertNotEqual(base["build_key"], other["build_key"])
 
     def test_unsupported_platen_type(self):
@@ -485,6 +488,82 @@ class PhysicalBuilderTests(unittest.TestCase):
             _platen_plan(physics, manifest)
         self.assertEqual(caught.exception.code, "NOT_IMPLEMENTED")
         self.assertIn("exact integer multiple", str(caught.exception))
+
+    def test_boundary_block_content(self):
+        manifest = self.build()
+        block = (Path(self.td.name) / "build/blocks/boundary_conditions.inc").read_text()
+        sections, current = [], None
+        for line in block.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("**"):
+                continue
+            if stripped.startswith("*"):
+                current = [] if stripped == "*Boundary" else None
+                if current is not None:
+                    sections.append(current)
+                continue
+            if current is not None:
+                current.append([p.strip() for p in stripped.split(",")])
+        self.assertEqual(len(sections), 2)
+        bottom, top = sections
+        self.assertEqual([row[0] for row in bottom], ["RP_BOTTOM"] * 6)
+        self.assertEqual([(row[1], row[2]) for row in bottom],
+                         [("1", "1"), ("2", "2"), ("3", "3"), ("4", "4"), ("5", "5"), ("6", "6")])
+        self.assertEqual([row[0] for row in top], ["RP_TOP"] * 5)
+        self.assertEqual(sorted((row[1], row[2]) for row in top),
+                         [("1", "1"), ("2", "2"), ("4", "4"), ("5", "5"), ("6", "6")])
+        self.assertTrue(all(len(row) == 3 for row in bottom + top))
+
+    def test_boundary_macro_nodes_absent(self):
+        self.build()
+        block = (Path(self.td.name) / "build/blocks/boundary_conditions.inc").read_text()
+        self.assertNotIn("RP_X_CTRL", block)
+        self.assertNotIn("RP_Y_CTRL", block)
+
+    def test_boundary_scope_guard(self):
+        self.build()
+        block = (Path(self.td.name) / "build/blocks/boundary_conditions.inc").read_text().lower()
+        for token in ("amplitude", "amp_compression", "*step", "*dynamic", "*contact",
+                      "*surface", "*output", "op=", "type="):
+            self.assertNotIn(token, block)
+
+    def test_boundary_deterministic(self):
+        one = self.build("bc_one")
+        two = self.build("bc_two")
+        self.assertEqual(one["blocks"]["boundary_conditions"]["sha256"],
+                         two["blocks"]["boundary_conditions"]["sha256"])
+        self.assertEqual(one["build_key"], two["build_key"])
+
+    def test_boundary_independent_of_loading(self):
+        base = self.build("lbase")
+        changed = json.loads(self.physics.read_text())
+        changed["target_compression_strain"] = 0.2
+        changed_path = Path(self.td.name) / "physics_strain20.json"
+        atomic_json(changed_path, changed)
+        other = build_physical(self.npz, self.report, self.pairs_csv, changed_path,
+                               self.material, self.numerics, Path(self.td.name) / "lchanged")
+        self.assertEqual(base["blocks"]["boundary_conditions"]["sha256"],
+                         other["blocks"]["boundary_conditions"]["sha256"])
+        self.assertEqual(
+            (Path(self.td.name) / "lbase/blocks/boundary_conditions.inc").read_bytes(),
+            (Path(self.td.name) / "lchanged/blocks/boundary_conditions.inc").read_bytes())
+
+    def test_unsupported_boundary_mode(self):
+        with self.assertRaises(PipelineError) as caught:
+            _render_boundary_conditions({"boundary_mode": "free_all"}, {"labels": self._labels()})
+        self.assertEqual(caught.exception.code, "NOT_IMPLEMENTED")
+
+    def test_boundary_broken_label_contract(self):
+        broken = self._labels()
+        del broken["rp_bottom"]
+        with self.assertRaises(PipelineError) as caught:
+            _render_boundary_conditions({"boundary_mode": "lateral_xy_platens"}, {"labels": broken})
+        self.assertEqual(caught.exception.code, "CONFIG_INVALID")
+        duplicated = self._labels()
+        duplicated["rp_top"] = duplicated["rp_bottom"]
+        with self.assertRaises(PipelineError) as caught:
+            _render_boundary_conditions({"boundary_mode": "lateral_xy_platens"}, {"labels": duplicated})
+        self.assertEqual(caught.exception.code, "CONFIG_INVALID")
 
 
 if __name__ == "__main__":

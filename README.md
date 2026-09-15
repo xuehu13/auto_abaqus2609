@@ -13,7 +13,7 @@ Abaqus 始终是外部 vendor runtime：Abaqus Python、odbAccess 与求解器�
 ```powershell
 pixi install          # 重建三环境（换机复现入口）
 pixi run check        # 三环境自检；不跑网格、不提交 Abaqus
-pixi run test         # 14 项核心测试 + 8 项 Pixi 边界测试
+pixi run test         # 运行当前自动化测试套件
 pixi run cli --help   # 全部现有 CLI 命令
 pixi run cli prepare-mesher --case config/cases/fig1.json --out work/<新attempt>
 pixi run mesh-pre / mesh-post / mesh-check --out work/<新attempt> [--from-attempt ...]
@@ -22,7 +22,7 @@ pixi run build-cgal --check-only        # 编译工具链检查；实际构建�
 
 每次输出必须使用新的 `work/<attempt>` 目录，拒绝覆盖。
 
-当前 `build-physical` 只生成 partial 物理块（材料/截面 `blocks/material_section.inc`）+ `model_manifest.json`，不生成完整 `physical.inp`，也没有任何 Abaqus 验证，不是 production-ready。
+当前 `build-physical` 生成 partial 物理 blocks：`blocks/material_section.inc`、`blocks/rigid_platens.inc`、`blocks/boundary_conditions.inc` 与 `model_manifest.json`。仍不生成完整 `physical.inp`，也没有 Abaqus Physical Data Check，不是 production-ready。
 
 ## 目录结构
 

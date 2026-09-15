@@ -2,9 +2,10 @@
 
 BUILD only proves what is assembled here. This stage validates input and
 numerics contracts, reuses the frozen prepare-fe ingredients, renders the
-material/section and rigid-platen blocks and records the model identity. The
-remaining writer steps are still explicitly NOT_IMPLEMENTED, so a successful
-build leaves no physical.inp and claims no Abaqus validation.
+material/section, rigid-platen and zero-valued boundary-condition blocks and
+records the model identity. The remaining writer steps are still explicitly
+NOT_IMPLEMENTED, so a successful build leaves no physical.inp and claims no
+Abaqus validation.
 """
 from __future__ import annotations
 
@@ -19,6 +20,7 @@ _BUILDER_ID = "physical-builder-scaffold-v1"
 _INGREDIENT_FILES = ("shell_mesh.inc", "lateral_pbc.inc", "pbc_map.json", "model_inputs.json")
 _MATERIAL_BLOCK = "material_section.inc"
 _RIGID_BLOCK = "rigid_platens.inc"
+_BC_BLOCK = "boundary_conditions.inc"
 _NUMERICS_REQUIRED = ("schema_version", "procedure", "application", "nlgeom",
                       "initial_increment_s", "minimum_increment_s", "maximum_increment_s",
                       "maximum_increments", "automatic_stabilization", "cpus_per_job")
@@ -248,8 +250,48 @@ def _render_rigid_platens(physics, manifest):
 
 
 def _render_boundary_conditions(physics, manifest):
-    """Platen BCs and the lateral macro stretch DOF handling around the PBC RPs."""
-    raise PipelineError("NOT_IMPLEMENTED", "Boundary condition rendering is not implemented yet.")
+    """Render the model-level zero-valued platen constraints.
+
+    Evidence baseline: hand model BC_BOTTOM_FIXED (RP_BOTTOM DOF1..6 = 0) and
+    BC_TOP_GUIDE (RP_TOP DOF1,2,4,5,6 = 0; DOF3 free until the compression
+    step). RP_X_CTRL/RP_Y_CTRL receive NO boundary: their DOF1/DOF2 are the
+    lateral PBC macro control DOFs used by the equations. The nonzero U3
+    loading and the amplitude belong to the future step/loading milestone, so
+    this renderer must not read or emit any loading parameter.
+    """
+    if physics.get("boundary_mode") != "lateral_xy_platens":
+        raise PipelineError("NOT_IMPLEMENTED",
+                            "Boundary mode " + repr(physics.get("boundary_mode")) + " is valid "
+                            "Abaqus usage but this writer only supports lateral_xy_platens.")
+    labels = manifest["labels"]
+    try:
+        rp = [int(labels[key]) for key in ("rp_x", "rp_y", "rp_bottom", "rp_top")]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise PipelineError("CONFIG_INVALID",
+                            "Defensive label contract check failed: the four control/reference "
+                            "labels must exist and be integers.") from exc
+    if len(set(rp)) != 4:
+        raise PipelineError("CONFIG_INVALID", "The four control/reference node labels are not distinct.")
+    return "\n".join([
+        "** Zero-valued platen constraints; nonzero compression is rendered later",
+        "** by the step/loading milestone (top U3 intentionally left free here).",
+        "** The two PBC macro control nodes receive no boundary, by hand-baseline evidence.",
+        "** Bottom rigid platen fully fixed (hand baseline BC_BOTTOM_FIXED).",
+        "*Boundary",
+        "RP_BOTTOM, 1, 1",
+        "RP_BOTTOM, 2, 2",
+        "RP_BOTTOM, 3, 3",
+        "RP_BOTTOM, 4, 4",
+        "RP_BOTTOM, 5, 5",
+        "RP_BOTTOM, 6, 6",
+        "** Top rigid platen guide (hand baseline BC_TOP_GUIDE).",
+        "*Boundary",
+        "RP_TOP, 1, 1",
+        "RP_TOP, 2, 2",
+        "RP_TOP, 4, 4",
+        "RP_TOP, 5, 5",
+        "RP_TOP, 6, 6",
+    ]) + "\n"
 
 
 def _render_contact(physics, manifest):
@@ -297,6 +339,8 @@ def build(npz, report, pairs, physics_path, material_path, numerics_path, output
     rigid_plan = _platen_plan(model_inputs["physics"], model_inputs)
     atomic_text(blocks_dir / _RIGID_BLOCK, _render_rigid_platens(model_inputs["physics"], model_inputs))
     rigid_block_sha = file_hash(blocks_dir / _RIGID_BLOCK)
+    atomic_text(blocks_dir / _BC_BLOCK, _render_boundary_conditions(model_inputs["physics"], model_inputs))
+    bc_block_sha = file_hash(blocks_dir / _BC_BLOCK)
     scaffold_key = digest({"model_key": model_inputs["model_key"], "numerics": numerics,
                            "numerics_sha256": file_hash(numerics_path), "builder": _BUILDER_ID})
     manifest = {
@@ -306,7 +350,8 @@ def build(npz, report, pairs, physics_path, material_path, numerics_path, output
         "scaffold_key": scaffold_key,
         "build_key": digest({"scaffold_key": scaffold_key, "builder": _BUILDER_ID,
                              "blocks": {"material_section": material_block_sha,
-                                        "rigid_platens": rigid_block_sha}}),
+                                        "rigid_platens": rigid_block_sha,
+                                        "boundary_conditions": bc_block_sha}}),
         "identity": {"model_key": model_inputs["model_key"],
                      "physics_profile_id": model_inputs["physics"].get("profile_id"),
                      "material_id": model_inputs["material"].get("material_id"),
@@ -351,12 +396,21 @@ def build(npz, report, pairs, physics_path, material_path, numerics_path, output
                 "element_ranges": {"bottom": list(rigid_plan["bottom_elements"]),
                                    "top": list(rigid_plan["top_elements"])},
                 "normal_policy": "baseline_shared_connectivity_plus_z_both",
-                "normal_policy_status": "baseline_reproduction_pending_contact_validation"}},
+                "normal_policy_status": "baseline_reproduction_pending_contact_validation"},
+            "boundary_conditions": {
+                "path": "blocks/" + _BC_BLOCK, "sha256": bc_block_sha,
+                "boundary_mode": model_inputs["physics"]["boundary_mode"],
+                "bottom_fixed_dofs": [1, 2, 3, 4, 5, 6],
+                "top_guide_dofs": [1, 2, 4, 5, 6],
+                "top_loading_dof": 3,
+                "rp_x_boundary": "none", "rp_y_boundary": "none",
+                "source_policy": "baseline_lateral_xy_platens"}},
         "implemented_stages": ["input contract checks", "numerics contract checks",
                                "ingredient reuse from prepare-fe", "model manifest",
                                "material/section block rendering",
-                               "rigid platens/reference points block rendering"],
-        "missing_stages": ["boundary conditions", "contact", "step and loading", "output requests",
+                               "rigid platens/reference points block rendering",
+                               "boundary conditions block rendering"],
+        "missing_stages": ["contact", "step and loading", "output requests",
                            "physical.inp assembly", "static model validation", "physical datacheck",
                            "solve", "ODB QA"],
         "dataset_eligible": False,
