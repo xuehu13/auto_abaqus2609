@@ -183,6 +183,13 @@ class RuntimeTests(unittest.TestCase):
 class _BuilderFixtureMixin:
     """Shared synthetic bundle + config fixture; the cube is schema-only."""
 
+    def _shared_fake_launcher(self):
+        """A dummy .bat launcher so tests never touch the real Abaqus install."""
+        launcher = Path(self.td.name) / "fake_abaqus.bat"
+        if not launcher.exists():
+            launcher.write_text("@echo off\r\n", encoding="ascii")
+        return str(launcher)
+
     def setUp(self):
         self.td = tempfile.TemporaryDirectory()
         self.addCleanup(self.td.cleanup)
@@ -1306,10 +1313,7 @@ class PhysicalDataCheckTests(_BuilderFixtureMixin, unittest.TestCase):
         return folder
 
     def _fake_launcher(self):
-        launcher = Path(self.td.name) / "fake_abaqus.bat"
-        if not launcher.exists():
-            launcher.write_text("@echo off\r\n", encoding="ascii")
-        return str(launcher)
+        return self._shared_fake_launcher()
 
     def _fake_process(self, dat=None, msg=None, log=None, returncode=0):
         calls = []
@@ -1633,10 +1637,7 @@ class PhysicalSolveTests(_BuilderFixtureMixin, unittest.TestCase):
     _DC_LOG = "Abaqus JOB fig1_m2_datacheck COMPLETED\n"
 
     def _fake_launcher(self):
-        launcher = Path(self.td.name) / "fake_abaqus.bat"
-        if not launcher.exists():
-            launcher.write_text("@echo off\r\n", encoding="ascii")
-        return str(launcher)
+        return self._shared_fake_launcher()
 
     def _run_datacheck(self, source, out):
         def fake_dc(argv, cwd, timeout_s):

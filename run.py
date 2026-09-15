@@ -32,7 +32,7 @@ def main():
     p.add_argument("--cgal-build", help="Build attempt directory produced by build-cgal; optional for preparation only")
     p.add_argument("--vendor", default=str(ROOT / "vendor/periodic_surface_mesher_v1.0"))
     p.add_argument("--out", required=True)
-    p = sub.add_parser("prepare-fe", help="Validate mesh contract and write shell/PBC ingredients; no complete physical INP yet")
+    p = sub.add_parser("prepare-fe", help="Validate mesh contract and write FE ingredients only; the complete physical INP is assembled by build-physical")
     p.add_argument("--npz", required=True)
     p.add_argument("--report", required=True)
     p.add_argument("--pairs", required=True)
