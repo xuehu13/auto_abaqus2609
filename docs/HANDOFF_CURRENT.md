@@ -144,6 +144,8 @@ Layer 4 Visualization Policy   曲线/云图/动画/论文图      ← postproce
 
 `work/` 与 `reference/` 均为 Git-ignored local-only，新机器 clone 后**可能不存在**：
 - `work/fig1_solve_m3_20pct_003/`（M3 真实 20% solve：SOLVE_COMPLETED_WITH_WARNINGS，returncode=0，0 error/17 warning，完整 ODB 16,075,836 bytes）
+- `work/fig1_solve_cpu8_validation_001/`（CPU8 单变量实验：完成但更慢 32m51s vs 16m33s；本机 preferred 保持 cpus=4）
+- `docs/TROUBLESHOOTING.md`（失败/诊断历史索引；10-attempt M2 诊断链摘要见 `work/fig1_datacheck_m2_diagnostics_summary.json`）
 - `work/fig1_datacheck_m2_final_001/`（M2 正式 CLI 验证：DATACHECK_COMPLETED_WITH_WARNINGS，returncode=0，0 error/10 warning，execution_policy=cpus=1 solver via local_environment）
 - `work/fig1_datacheck_m2_diagnostics_summary.json`（M1 环境解堵 10-attempt 诊断链：standard_parallel=all 的可复现 pre 失败与 solver-mode 绕过）
 - `work/fig1_build_m17_smoke_001/`（M1-7 真实 Fig.1 build smoke：physical.inp + build_report.json，13/13 checks PASS）

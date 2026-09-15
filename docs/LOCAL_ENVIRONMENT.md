@@ -1,5 +1,11 @@
 # 本机环境检查
 
+> **PUBLIC NOTE**: The paths, drive letters, hardware specifications and
+> software versions below describe the ORIGINAL DEVELOPMENT WORKSTATION at
+> the time of the check. They are recorded as engineering evidence and are
+> NOT a required directory layout for other users; configure your own paths
+> in `config/*.local.json` instead.
+>
 > LEGACY NOTICE（2026-09-14 加注）：本文写于 Conda→Pixi 迁移之前。第 3、8 节中的 `F:\Anaconda` 解释器命令已停用，仅为当时实测记录；当前唯一活动入口是工作区根的 `pixi run <task>`（见根目录 README 的 Pixi quick-start）。正文内容保持原样未改动。
 
 检查日期：2026-09-13（Asia/Shanghai）。这是本机实测记录，原 `VERIFICATION.md` 记载的 2026-09-12 Linux 测试仍保留为历史记录。

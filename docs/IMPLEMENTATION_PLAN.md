@@ -36,7 +36,7 @@
 
 ## 阶段 C：两道 Data Check 和初始状态验收（**2026-09-15 更新：Fig.1 Physical Data Check 已通过（execution level），COMPLETED_WITH_WARNINGS**）
 
-> 状态：M2 已完成——自动 `physical.inp` 通过真实 Abaqus 2026 Data Check（`work/fig1_datacheck_m2_final_001`：returncode=0、0 error、10 warnings 保留）。开发机 `standard_parallel=all` 存在可复现的 General Contact preprocessing 失败，Data Check 安全 profile 为 `cpus=1, standard_parallel=solver`（machine-local 配置，见 HANDOFF "Runtime portability"）。10 条 warnings（双侧面歧义 ×8、STRAINFREE 调整比例、General Contact double-sided）作为 M3/M4 QA 强制输入，未白名单。30% Solve 验收仍属阶段 D；M3 execution policy = TO BE VALIDATED（候选 `cpus=4, standard_parallel=solver`）。
+> 状态：M2 已完成——自动 `physical.inp` 通过真实 Abaqus 2026 Data Check（`work/fig1_datacheck_m2_final_001`：returncode=0、0 error、10 warnings 保留）。开发机 `standard_parallel=all` 存在可复现的 General Contact preprocessing 失败，Data Check 安全 profile 为 `cpus=1, standard_parallel=solver`（machine-local 配置，见 HANDOFF "Runtime portability"）。10 条 warnings（双侧面歧义 ×8、STRAINFREE 调整比例、General Contact double-sided）作为 M3/M4 QA 强制输入，未白名单。30% Solve 验收仍属阶段 D。**M3 Solve execution policy 已在本机/20% validation case 上真实验证：`cpus=4, standard_parallel=solver`（16m33s 完成）；`cpus=8, solver` 亦完成但更慢（32m51s，见 TROUBLESHOOTING）；本机 preferred profile = cpus=4 + solver。**
 
 外层执行器分别管理 Mesh Data Check 与 Physical Data Check，唯一 job/attempt/scratch 目录，保存命令、退出码、开始/结束时间、Abaqus 版本、输入/输出 hash。
 
