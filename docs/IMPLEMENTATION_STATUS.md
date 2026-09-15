@@ -29,8 +29,16 @@
 - `status=PHYSICAL_BUILD_PARTIAL`；`dataset_eligible=false`；无 physical.inp；无 Abaqus 验证。`build_key` 已包含三个 block SHA。
 - 备注（非本阶段任务）：手工 Compression Step 内以 `*Boundary, amplitude=AMP_COMPRESSION` 重申 RP_TOP guide 并施加 U3=−2；Abaqus 默认 OP=MOD，model 级 zero guide 持续有效，未来 Step/Loading 里程碑可自行决定仅加 U3 或完整重申。
 
-### M1-4 未开始：Contact
-- 待办：先从手工 INP 提取 `*Surface`/`*Contact`/`*Contact Inclusions`/`*Contact Property Assignment` 完整证据；兑现 `normal_policy_status=pending_contact_validation`（SPOS/SNEG、ALL EXTERIOR、刚板 side/domain、初始接触/穿透审计）。
+### M1-4 已完成：Contact
+- `blocks/contact.inc`：`*Surface Interaction, name=ContactProp` + `*Friction, slip tolerance=<config>` + `<friction>` + `*Surface Behavior, pressure-overclosure=HARD` + `*Contact`（无 OP）+ `*Contact Inclusions, ALL EXTERIOR`（无数据行）+ 全局 `*Contact Property Assignment` → ` , , ContactProp`。
+- General Contact / ALL EXTERIOR 是当前 v0.1 supported policy（hand-baseline 复现），不是长期唯一 contact strategy；friction、slip_tolerance 由 config 驱动，产品代码无科研数值硬编码。
+- 手工 baseline 的 `*Surface Interaction` optional scalar 行（`1.,`，仅适用 2D/node-based pair）**有意省略**（本模型为 3D element-based），省略原因写入 block 注释并有结构化测试锁定。
+- 无显式 `*Surface`、无 Contact Initialization/Controls keywords；`allow_separation=true` 通过省略 NO SEPARATION 表达；`tangential=penalty` 依赖 Standard 默认 penalty 语义（`tangential_policy=penalty_default`）。
+- `normal_policy_status` 演进为 `baseline_contact_definition_reproduced_pending_datacheck`（writer 已复现 baseline 接触定义，真实初始化待 M2 Abaqus Data Check；不声称 contact validated）。
+- `status=PHYSICAL_BUILD_PARTIAL`；`dataset_eligible=false`；无 physical.inp；无 Abaqus 验证；`build_key` 已包含四个 block SHA。
+
+### M1-5 未开始：Step + Loading
+- 待办：`*Step/*Dynamic/*Amplitude` 与 RP_TOP U3 非零加载（数值必须 config 驱动，禁止硬编码 20%/30%）；Step 描述必须由实际参数生成；OP=MOD 语义下 guide DOF 是否重申由该阶段基于手工证据决定。
 
 ## 已实现且经过本地逻辑验证
 

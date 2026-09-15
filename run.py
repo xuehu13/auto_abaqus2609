@@ -64,7 +64,7 @@ def main():
                                   "PBC representative equations", "shell/PBC include generation",
                                   "SQLite stage ledger primitives", "stagnation and diagnostic primitives",
                                   "aligned history curve QA",
-                                  "partial physical builder: material/section + rigid platens/control nodes + zero-valued platen BCs + manifest, no contact, no step/loading, no complete physical.inp, no Abaqus validation"],
+                                  "partial physical builder: material/section + rigid platens/control nodes + zero-valued platen BCs + baseline General Contact + manifest, no step/loading, no complete physical.inp, no Abaqus validation"],
                   "next": ["complete physical INP builder", "version-specific launcher and monitor",
                            "ODB contact/PBC/field extraction", "orchestration, reconciliation, acceptance and export"]}
     elif args.command == "prepare-mesher":

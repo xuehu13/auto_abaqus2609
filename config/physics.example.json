@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "profile_id": "prototype_xy_platens_v1",
   "validated_to_target": false,
   "unit_system": "N-mm-s-tonne-MPa",
@@ -19,6 +19,6 @@
     "initial_z": "0_and_L",
     "initialization_profile": "prototype_requires_strainfree_QA"
   },
-  "contact": {"normal": "hard", "allow_separation": true, "tangential": "penalty", "friction": 0.6, "shell_self_contact": true},
+  "contact": {"normal": "hard", "allow_separation": true, "tangential": "penalty", "friction": 0.6, "slip_tolerance": 0.005, "shell_self_contact": true},
   "note": "Copied modeling choices from the supplied handoff, not all author-published settings. Contact polarity, initial geometry and complete 30% solve still need regression."
 }

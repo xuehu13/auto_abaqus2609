@@ -19,12 +19,14 @@
 1. **契约和身份**：读取真实 NPZ/report/CSV；验证单位、参数合法性、材料用途标记；把网格/材料/加载/数值/输出/代码版本纳入 manifest 和内容 hash。
 2. **壳与集合**：复用 mesh_contract、编号出口与厚度公式；节点坐标/连通/法向不重新生成；建立稳定非空集合，输出与手工壳差异报告。保留高精度坐标，说明 CAE 手工文本舍入差量。
 3. **材料和截面**：按配置生成 Density/Elastic/Plastic/Shell Section；明确 5 个截面积分点及所采用壳设置。当前 surrogate 明示研究/接口用途，`allow_production_dataset=false` 不得被绕过。
-4. **刚板与 RP**：生成 18×18 mm R3D4 压板、RP/刚体/顶底集合和 BC；统一标签分配，检查无碰撞、无空集合、无 inactive DOF 误选。
+4. **刚板与 RP**：当前 Fig.1 baseline 为 18×18 mm R3D4 压板，尺寸由 `physics.platens` 配置驱动；R3D4 是当前 supported platen policy，不是长期唯一方案。生成压板、RP/刚体/顶底集合和 BC；统一标签分配，检查无碰撞、无空集合、无 inactive DOF 误选。
 5. **PBC**：复用现有代表节点算法；检查原 pairs 关系可恢复、消元自由度不复用；用手工树式 equation 核对约束空间，不能仅比较“1722 条”。保留横向宏观伸缩自由、转角策略及边界模式的显式配置。
-6. **接触**：先记录手工 ALL EXTERIOR、μ=0.6、HARD、slip tolerance=0.005 的完整语义；压板单侧接触/初始化若作为改进，建立独立 profile 并说明变化，不能声称与旧模型逐项相同。保留壳自接触。
+6. **接触**：当前 Fig.1 baseline = General Contact / ALL EXTERIOR / HARD / friction=0.6 / slip_tolerance=0.005；friction、slip_tolerance 等数值由 config 驱动；general-contact/all-exterior 是当前 v0.1 supported policy，不是长期唯一 contact strategy，其他合法策略按实际科研需求扩展。压板单侧接触/初始化若作为改进，建立独立 profile 并说明变化，不能声称与旧模型逐项相同。保留壳自接触。
 7. **步和加载**：写 Dynamic Implicit / MODERATE DISSIPATION / NLGEOM / Smooth Step。将20%（−2 mm）基准与30%（−3 mm）目标作为独立配置；步骤说明由实际参数生成，禁止“描述30%、实际20%”。
 8. **输出**：每成功增量的 U3/RF3/能量及横向 RP；按目标版本确认 field 变量。修正 `frequency=50` 被误读为50帧的问题；设计可支持全过程 PBC/接触诊断的保存频率，记录实际场帧应变。每组 history 各自保存时间轴。
 9. **静态报告**：检查 include 存在、引用有效、标签唯一、节点集非空、实际目标位移与描述一致；原子发布 `physical.inp`、includes、`model_manifest.json`、`pbc_map.json`、`build_report.json`。禁止在 BUILD 阶段宣称物理求解通过。
+
+技术债登记：Shell Section 的 Simpson 积分点数当前 baseline 固定为 5（已明确不是不可变科研参数）；出现第二种 section policy/研究需求时再提升为 config，当前不提前建立 section plugin framework。M1-6 Output 阶段应建立独立 `config/outputs.example.json`，field/history 变量与频率不得硬编码为 Fig.1 唯一方案。
 
 本阶段先交付可读完整 INP 和与手工基准的逐块差异报告；代码测试重点覆盖标签冲突、空引用、目标变更、PBC 等价与错误输入，不为每段文本格式编写镜像测试。
 

@@ -2,7 +2,7 @@
 
 BUILD only proves what is assembled here. This stage validates input and
 numerics contracts, reuses the frozen prepare-fe ingredients, renders the
-material/section, rigid-platen and zero-valued boundary-condition blocks and
+material/section, rigid-platen, boundary-condition and contact blocks and
 records the model identity. The remaining writer steps are still explicitly
 NOT_IMPLEMENTED, so a successful build leaves no physical.inp and claims no
 Abaqus validation.
@@ -21,6 +21,7 @@ _INGREDIENT_FILES = ("shell_mesh.inc", "lateral_pbc.inc", "pbc_map.json", "model
 _MATERIAL_BLOCK = "material_section.inc"
 _RIGID_BLOCK = "rigid_platens.inc"
 _BC_BLOCK = "boundary_conditions.inc"
+_CONTACT_BLOCK = "contact.inc"
 _NUMERICS_REQUIRED = ("schema_version", "procedure", "application", "nlgeom",
                       "initial_increment_s", "minimum_increment_s", "maximum_increment_s",
                       "maximum_increments", "automatic_stabilization", "cpus_per_job")
@@ -295,8 +296,74 @@ def _render_boundary_conditions(physics, manifest):
 
 
 def _render_contact(physics, manifest):
-    """General contact semantics (normal/tangential/shell self contact) from the physics profile."""
-    raise PipelineError("NOT_IMPLEMENTED", "Contact rendering is not implemented yet.")
+    """Render the hand-baseline General Contact definition.
+
+    Baseline policy (Fig1_Compression.inp): Abaqus/Standard General Contact over
+    the ALL EXTERIOR self-contact domain with one global property assignment.
+    The hand baseline's optional surface-interaction scalar data line (1.0,
+    only relevant for 2D models or node-based contact pairs) is intentionally
+    omitted: this model is 3D element-based, so that default scalar does not
+    apply. No explicit surfaces, no contact-initialization keywords, and the OP
+    parameter is not applicable in Abaqus/Standard here. Validation of the
+    actual contact initialization belongs to the M2 data check.
+    """
+    contact = physics.get("contact")
+    if not isinstance(contact, dict):
+        raise PipelineError("CONFIG_INVALID", "physics.contact must be an object.")
+    for key in ("normal", "allow_separation", "tangential", "friction", "slip_tolerance", "shell_self_contact"):
+        if key not in contact:
+            raise PipelineError("CONFIG_INVALID", "contact config lacks required key: " + key)
+    if not isinstance(contact["normal"], str):
+        raise PipelineError("CONFIG_INVALID", "contact.normal must be a string.")
+    if not isinstance(contact["tangential"], str):
+        raise PipelineError("CONFIG_INVALID", "contact.tangential must be a string.")
+    if not isinstance(contact["allow_separation"], bool) or not isinstance(contact["shell_self_contact"], bool):
+        raise PipelineError("CONFIG_INVALID", "contact.allow_separation and shell_self_contact must be booleans.")
+    friction = contact["friction"]
+    slip = contact["slip_tolerance"]
+    for name, value in (("friction", friction), ("slip_tolerance", slip)):
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
+            raise PipelineError("CONFIG_INVALID", "contact." + name + " must be a finite number.")
+    if friction < 0:
+        raise PipelineError("CONFIG_INVALID", "contact.friction must be >= 0.")
+    if slip <= 0:
+        raise PipelineError("CONFIG_INVALID", "contact.slip_tolerance must be > 0.")
+    # Supported policy of this baseline writer; alternatives are valid Abaqus
+    # modelling choices but this writer implements exactly one policy.
+    if contact["normal"] != "hard":
+        raise PipelineError("NOT_IMPLEMENTED",
+                            "Normal behavior " + repr(contact["normal"]) + " is valid Abaqus usage "
+                            "but this writer only supports hard pressure-overclosure.")
+    if contact["allow_separation"] is not True:
+        raise PipelineError("NOT_IMPLEMENTED",
+                            "allow_separation=false (NO SEPARATION) is valid Abaqus usage but the "
+                            "ALL EXTERIOR baseline writer only supports the default separation "
+                            "semantics expressed by omitting NO SEPARATION.")
+    if contact["tangential"] != "penalty":
+        raise PipelineError("NOT_IMPLEMENTED",
+                            "Tangential policy " + repr(contact["tangential"]) + " is valid Abaqus "
+                            "usage but this writer relies on the Standard default penalty/stiffness "
+                            "friction semantics, matching the hand baseline.")
+    if contact["shell_self_contact"] is not True:
+        raise PipelineError("NOT_IMPLEMENTED",
+                            "shell_self_contact=false is valid Abaqus usage but this writer uses the "
+                            "ALL EXTERIOR self-contact domain and must not silently emit the same "
+                            "domain with self-contact disabled.")
+    return "\n".join([
+        "** Contact definition rendered by physical-builder (M1-4).",
+        "** Baseline policy: Abaqus/Standard General Contact with ALL EXTERIOR.",
+        "** The hand baseline's optional surface-interaction scalar line (1.0, used only",
+        "** for 2D models or node-based contact pairs) is intentionally omitted here:",
+        "** this model is 3D element-based, so that default scalar does not apply.",
+        "*Surface Interaction, name=ContactProp",
+        "*Friction, slip tolerance=" + _fmt(slip),
+        _fmt(friction) + ",",
+        "*Surface Behavior, pressure-overclosure=HARD",
+        "*Contact",
+        "*Contact Inclusions, ALL EXTERIOR",
+        "*Contact Property Assignment",
+        ", , ContactProp",
+    ]) + "\n"
 
 
 def _render_step_and_loading(physics, numerics, manifest):
@@ -341,6 +408,8 @@ def build(npz, report, pairs, physics_path, material_path, numerics_path, output
     rigid_block_sha = file_hash(blocks_dir / _RIGID_BLOCK)
     atomic_text(blocks_dir / _BC_BLOCK, _render_boundary_conditions(model_inputs["physics"], model_inputs))
     bc_block_sha = file_hash(blocks_dir / _BC_BLOCK)
+    atomic_text(blocks_dir / _CONTACT_BLOCK, _render_contact(model_inputs["physics"], model_inputs))
+    contact_block_sha = file_hash(blocks_dir / _CONTACT_BLOCK)
     scaffold_key = digest({"model_key": model_inputs["model_key"], "numerics": numerics,
                            "numerics_sha256": file_hash(numerics_path), "builder": _BUILDER_ID})
     manifest = {
@@ -351,7 +420,8 @@ def build(npz, report, pairs, physics_path, material_path, numerics_path, output
         "build_key": digest({"scaffold_key": scaffold_key, "builder": _BUILDER_ID,
                              "blocks": {"material_section": material_block_sha,
                                         "rigid_platens": rigid_block_sha,
-                                        "boundary_conditions": bc_block_sha}}),
+                                        "boundary_conditions": bc_block_sha,
+                                        "contact": contact_block_sha}}),
         "identity": {"model_key": model_inputs["model_key"],
                      "physics_profile_id": model_inputs["physics"].get("profile_id"),
                      "material_id": model_inputs["material"].get("material_id"),
@@ -396,7 +466,7 @@ def build(npz, report, pairs, physics_path, material_path, numerics_path, output
                 "element_ranges": {"bottom": list(rigid_plan["bottom_elements"]),
                                    "top": list(rigid_plan["top_elements"])},
                 "normal_policy": "baseline_shared_connectivity_plus_z_both",
-                "normal_policy_status": "baseline_reproduction_pending_contact_validation"},
+                "normal_policy_status": "baseline_contact_definition_reproduced_pending_datacheck"},
             "boundary_conditions": {
                 "path": "blocks/" + _BC_BLOCK, "sha256": bc_block_sha,
                 "boundary_mode": model_inputs["physics"]["boundary_mode"],
@@ -404,13 +474,29 @@ def build(npz, report, pairs, physics_path, material_path, numerics_path, output
                 "top_guide_dofs": [1, 2, 4, 5, 6],
                 "top_loading_dof": 3,
                 "rp_x_boundary": "none", "rp_y_boundary": "none",
-                "source_policy": "baseline_lateral_xy_platens"}},
+                "source_policy": "baseline_lateral_xy_platens"},
+            "contact": {
+                "path": "blocks/" + _CONTACT_BLOCK, "sha256": contact_block_sha,
+                "property_name": "ContactProp",
+                "algorithm": "general_contact_standard",
+                "domain": "all_exterior_self",
+                "normal": model_inputs["physics"]["contact"]["normal"],
+                "allow_separation": model_inputs["physics"]["contact"]["allow_separation"],
+                "tangential_policy": "penalty_default",
+                "friction": model_inputs["physics"]["contact"]["friction"],
+                "slip_tolerance": model_inputs["physics"]["contact"]["slip_tolerance"],
+                "shell_self_contact": model_inputs["physics"]["contact"]["shell_self_contact"],
+                "explicit_surfaces": False,
+                "explicit_contact_initialization": False,
+                "initialization_policy": "abaqus_standard_default_pending_datacheck",
+                "source_policy": "hand_baseline_all_exterior_general_contact"}},
         "implemented_stages": ["input contract checks", "numerics contract checks",
                                "ingredient reuse from prepare-fe", "model manifest",
                                "material/section block rendering",
                                "rigid platens/reference points block rendering",
-                               "boundary conditions block rendering"],
-        "missing_stages": ["contact", "step and loading", "output requests",
+                               "boundary conditions block rendering",
+                               "contact block rendering"],
+        "missing_stages": ["step and loading", "output requests",
                            "physical.inp assembly", "static model validation", "physical datacheck",
                            "solve", "ODB QA"],
         "dataset_eligible": False,

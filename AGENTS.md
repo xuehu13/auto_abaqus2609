@@ -12,6 +12,7 @@
 - 分开记录“代码已实现”“逻辑测试通过”“真实 Abaqus 验证通过”。Data Check、正常作业结束、目标应变达到、科学质量验收分别判定。
 - 压缩模式保留 X/Y 周期及自由宏观横向伸缩，不擅加 Z-PBC。材料、接触、厚度、加载等物理参数不得在自动重试中偷偷改变。
 - 发现文档、源码、INP、ODB 不一致时列出来源和差异。未知警告或缺失检查进入待复核，不生成虚假 PASS，不外推未达到的 30% 应力。
+- Fig.1、论文与成功手工 INP 只作为当前验证 baseline/profile：材料、厚度、加载、接触、刚板尺寸、网格、分析步、输出等科研变量不得因当前只有一个 baseline 值而被硬编码为长期产品常数；连续/数值型科研参数优先由 config 驱动；合法但当前未实现的物理/数值策略必须显式返回 NOT_IMPLEMENTED，不得静默使用 baseline。
 - 架构或阶段开发开始前必读 `docs/PROJECT_ROADMAP.md`（长期方向与阶段定义）和 `docs/IMPLEMENTATION_PLAN.md`（当前施工顺序与验收）；两者冲突时以 ROADMAP 阶段定义和用户指令为准。仓库结构已定型：不移动代码目录、不修改历史证据、不启动完整求解或批量任务。未经用户明确要求不得 commit/push；用户明确要求 checkpoint 时可以创建本地 commit，但不 push。
 - 在工作区根运行 `pixi run check`、`pixi run test`、`pixi run plan`、`pixi run cli-help`。测试包装仍在实际代码根执行原有 unittest。权限错误与代码缺陷分开记录，不降低测试要求。
 - 网格 tasks 由 Pixi 选择 geo；`mesh-env`/`mesh-pre` 使用新的 `--out work/<attempt>`，`mesh-post`/`mesh-check` 还需 `--from-attempt` 并复制输入后处理，拒绝覆盖。`mesh-check` 只运行已有日志校验器，不提交 Abaqus。`build-cgal --check-only` 只检查外部编译工具链；实际构建必须指定新的 `--out`。

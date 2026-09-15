@@ -14,7 +14,8 @@ from pipeline.mesh_contract import load_bundle
 from pipeline.mesher_adapter import prepare
 from pipeline.pbc import relations, render_include
 from pipeline.physical_builder import (_platen_plan, _render_boundary_conditions,
-                                       _render_material_section, build as build_physical)
+                                       _render_contact, _render_material_section,
+                                       build as build_physical)
 from pipeline.prepare_fe import prepare as prepare_fe
 from pipeline.state import StateStore
 
@@ -462,6 +463,8 @@ class PhysicalBuilderTests(unittest.TestCase):
                          other["blocks"]["material_section"]["sha256"])
         self.assertEqual(base["blocks"]["boundary_conditions"]["sha256"],
                          other["blocks"]["boundary_conditions"]["sha256"])
+        self.assertEqual(base["blocks"]["contact"]["sha256"],
+                         other["blocks"]["contact"]["sha256"])
         self.assertNotEqual(base["build_key"], other["build_key"])
 
     def test_unsupported_platen_type(self):
@@ -544,6 +547,8 @@ class PhysicalBuilderTests(unittest.TestCase):
                                self.material, self.numerics, Path(self.td.name) / "lchanged")
         self.assertEqual(base["blocks"]["boundary_conditions"]["sha256"],
                          other["blocks"]["boundary_conditions"]["sha256"])
+        self.assertEqual(base["blocks"]["contact"]["sha256"],
+                         other["blocks"]["contact"]["sha256"])
         self.assertEqual(
             (Path(self.td.name) / "lbase/blocks/boundary_conditions.inc").read_bytes(),
             (Path(self.td.name) / "lchanged/blocks/boundary_conditions.inc").read_bytes())
@@ -563,6 +568,104 @@ class PhysicalBuilderTests(unittest.TestCase):
         duplicated["rp_top"] = duplicated["rp_bottom"]
         with self.assertRaises(PipelineError) as caught:
             _render_boundary_conditions({"boundary_mode": "lateral_xy_platens"}, {"labels": duplicated})
+        self.assertEqual(caught.exception.code, "CONFIG_INVALID")
+
+    def test_contact_block_content(self):
+        manifest = self.build()
+        block = (Path(self.td.name) / "build/blocks/contact.inc").read_text()
+        self.assertIn("*Surface Interaction, name=ContactProp", block)
+        self.assertIn("*Friction, slip tolerance=0.005", block)
+        self.assertIn("0.6,", block)
+        self.assertIn("*Surface Behavior, pressure-overclosure=HARD", block)
+        self.assertIn("*Contact\n", block)
+        self.assertIn("*Contact Inclusions, ALL EXTERIOR", block)
+        self.assertIn("*Contact Property Assignment", block)
+        self.assertIn(", , ContactProp", block)
+        lines = block.splitlines()
+        idx = lines.index("*Surface Interaction, name=ContactProp")
+        followers = [l for l in lines[idx + 1:] if l.strip() and not l.startswith("**")]
+        self.assertTrue(followers[0].startswith("*Friction"))
+
+    def test_contact_scope_guard(self):
+        self.build()
+        block = (Path(self.td.name) / "build/blocks/contact.inc").read_text().lower()
+        for token in ("*boundary", "*step", "*dynamic", "*amplitude", "*output", "*restart",
+                      "*contact initialization", "*contact controls", "*surface,", "spos", "sneg"):
+            self.assertNotIn(token, block)
+
+    def test_contact_deterministic(self):
+        one = self.build("c_one")
+        two = self.build("c_two")
+        self.assertEqual(one["blocks"]["contact"]["sha256"], two["blocks"]["contact"]["sha256"])
+        self.assertEqual(one["build_key"], two["build_key"])
+
+    def test_contact_slip_tolerance_sensitivity(self):
+        base = self.build("sbase")
+        changed = json.loads(self.physics.read_text())
+        changed["contact"]["slip_tolerance"] = 0.01
+        changed_path = Path(self.td.name) / "physics_slip01.json"
+        atomic_json(changed_path, changed)
+        other = build_physical(self.npz, self.report, self.pairs_csv, changed_path,
+                               self.material, self.numerics, Path(self.td.name) / "schanged")
+        self.assertNotEqual(base["blocks"]["contact"]["sha256"],
+                            other["blocks"]["contact"]["sha256"])
+        self.assertNotIn("slip tolerance=0.005",
+                         (Path(self.td.name) / "schanged/blocks/contact.inc").read_text())
+        self.assertEqual(base["blocks"]["material_section"]["sha256"],
+                         other["blocks"]["material_section"]["sha256"])
+        self.assertEqual(base["blocks"]["rigid_platens"]["sha256"],
+                         other["blocks"]["rigid_platens"]["sha256"])
+        self.assertEqual(base["blocks"]["boundary_conditions"]["sha256"],
+                         other["blocks"]["boundary_conditions"]["sha256"])
+        self.assertNotEqual(base["build_key"], other["build_key"])
+
+    def test_contact_friction_sensitivity(self):
+        base = self.build("fbase")
+        changed = json.loads(self.physics.read_text())
+        changed["contact"]["friction"] = 0.3
+        changed_path = Path(self.td.name) / "physics_f03.json"
+        atomic_json(changed_path, changed)
+        other = build_physical(self.npz, self.report, self.pairs_csv, changed_path,
+                               self.material, self.numerics, Path(self.td.name) / "fchanged")
+        self.assertNotEqual(base["blocks"]["contact"]["sha256"],
+                            other["blocks"]["contact"]["sha256"])
+        self.assertEqual(base["blocks"]["material_section"]["sha256"],
+                         other["blocks"]["material_section"]["sha256"])
+        self.assertEqual(base["blocks"]["rigid_platens"]["sha256"],
+                         other["blocks"]["rigid_platens"]["sha256"])
+        self.assertEqual(base["blocks"]["boundary_conditions"]["sha256"],
+                         other["blocks"]["boundary_conditions"]["sha256"])
+
+    def test_contact_supported_policy(self):
+        manifest = {"labels": self._labels()}
+        for key, value in (("normal", "rough"), ("allow_separation", False),
+                           ("tangential", "lagrange"), ("shell_self_contact", False)):
+            variant = json.loads(self.physics.read_text())
+            variant["contact"][key] = value
+            with self.assertRaises(PipelineError) as caught:
+                _render_contact(variant, manifest)
+            self.assertEqual(caught.exception.code, "NOT_IMPLEMENTED", key)
+
+    def test_contact_invalid_config(self):
+        manifest = {"labels": self._labels()}
+        good = json.loads(self.physics.read_text())
+        mutations = (
+            {"contact": {k: v for k, v in good["contact"].items() if k != "friction"}},
+            {"contact": {**good["contact"], "friction": "x"}},
+            {"contact": {**good["contact"], "friction": -0.1}},
+            {"contact": {**good["contact"], "slip_tolerance": 0.0}},
+            {"contact": {**good["contact"], "slip_tolerance": "x"}},
+            {"contact": {**good["contact"], "allow_separation": "yes"}},
+            {"contact": {**good["contact"], "shell_self_contact": 1}},
+        )
+        for mutation in mutations:
+            with self.assertRaises(PipelineError) as caught:
+                _render_contact(mutation, manifest)
+            self.assertEqual(caught.exception.code, "CONFIG_INVALID", mutation)
+        nan_physics = json.loads(self.physics.read_text())
+        nan_physics["contact"]["friction"] = float("nan")
+        with self.assertRaises(PipelineError) as caught:
+            _render_contact(nan_physics, manifest)
         self.assertEqual(caught.exception.code, "CONFIG_INVALID")
 
 
