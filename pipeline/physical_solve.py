@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -30,7 +31,7 @@ _ERROR_PREFIX = "***ERROR"
 _WARNING_PREFIX = "***WARNING"
 _CONTEXT_STOP = ("***", "*", "THE ANALYSIS", "END OF")
 _REQUIRED_ARTIFACTS = ("dat", "msg", "sta", "odb")
-_STDOUT_COMPLETED_RE = re.compile(r"\bAbaqus\s+JOB\s+\S+\s+COMPLETED\b", re.I)
+_STDOUT_COMPLETED_FMT = r"\bAbaqus\s+JOB\s+{job}\s+COMPLETED\b"
 _STA_COMPLETED_MARKER = "THE ANALYSIS HAS COMPLETED SUCCESSFULLY"
 _ACCEPTED_DATACHECK_STATUSES = ("DATACHECK_PASSED", "DATACHECK_COMPLETED_WITH_WARNINGS")
 
@@ -127,6 +128,12 @@ def _run_process_to_files(argv, cwd, timeout_s, stdout_path, stderr_path):
         completed = subprocess.run([str(part) for part in argv], cwd=str(cwd),
                                    stdout=out_stream, stderr=err_stream, timeout=timeout_s)
     return completed.returncode
+
+
+def _stdout_job_completed(text, job_name):
+    """Completion token must name THIS job; other jobs' tokens are not evidence."""
+    pattern = re.compile(_STDOUT_COMPLETED_FMT.format(job=re.escape(job_name)), re.I)
+    return bool(pattern.search(text))
 
 
 def _resolve_execution_policy(cpus, standard_parallel, policy_path):
@@ -298,6 +305,7 @@ def run_solve(datacheck_dir, output, abaqus_command=None, job_name=_DEFAULT_JOB_
             "cpus=%d" % policy["cpus"],
             "standard_parallel=%s" % policy["standard_parallel"]]
     started = _utc_now()
+    monotonic_start = time.monotonic()
     try:
         returncode = _run_process_to_files(argv, attempt, timeout_s,
                                            attempt / "stdout.txt", attempt / "stderr.txt")
@@ -305,6 +313,7 @@ def run_solve(datacheck_dir, output, abaqus_command=None, job_name=_DEFAULT_JOB_
         raise PipelineError("SOLVE_TIMEOUT",
                             "Abaqus analysis exceeded the %ss wall limit; the attempt is "
                             "kept for inspection." % timeout_s) from exc
+    wall_time_s = time.monotonic() - monotonic_start
     ended = _utc_now()
     stdout_text = (attempt / "stdout.txt").read_text(encoding="utf-8", errors="replace")
     atomic_json(attempt / "command.json", {
@@ -323,9 +332,11 @@ def run_solve(datacheck_dir, output, abaqus_command=None, job_name=_DEFAULT_JOB_
     diagnostics = parse_solve_diagnostics([artifacts["dat"], artifacts["msg"],
                                            artifacts["sta"], artifacts["exception"],
                                            attempt / "stdout.txt", attempt / "stderr.txt"])
-    stdout_completed = bool(_STDOUT_COMPLETED_RE.search(stdout_text))
+    stdout_completed = _stdout_job_completed(stdout_text, job_name)
     sta_info = parse_sta(artifacts["sta"])
     missing = [kind for kind in _REQUIRED_ARTIFACTS if artifacts[kind] is None]
+    zero_byte_odb = (artifacts["odb"] is not None
+                     and artifacts["odb"].stat().st_size == 0)
     physics = source_manifest["physics"]
     target_step_time = float(physics["time_period_s"])
     last_step_time = sta_info["last_step_time"]
@@ -333,7 +344,7 @@ def run_solve(datacheck_dir, output, abaqus_command=None, job_name=_DEFAULT_JOB_
                            and last_step_time + 1e-6 >= target_step_time)
     failed = bool(returncode != 0 or not stdout_completed or not sta_info["sta_completion"]
                   or diagnostics["error_count"] or diagnostics["fatal"] or missing
-                  or not target_time_reached)
+                  or zero_byte_odb or not target_time_reached)
     if failed:
         status, claim = "SOLVE_FAILED", "FAIL"
     elif diagnostics["warning_count"]:
@@ -365,6 +376,7 @@ def run_solve(datacheck_dir, output, abaqus_command=None, job_name=_DEFAULT_JOB_
             "cpus": policy["cpus"], "standard_parallel": policy["standard_parallel"],
             "policy_source": policy["source"],
             "command": argv, "cwd": str(attempt), "return_code": returncode,
+            "wall_time_s": wall_time_s,
             "start_time": started, "end_time": ended,
         },
         "completion": {
@@ -391,10 +403,10 @@ def run_solve(datacheck_dir, output, abaqus_command=None, job_name=_DEFAULT_JOB_
             "mechanics_qa": "NOT_RUN",
             "dataset_eligible": False,
         },
-        "warning": "A completed solve proves only that Abaqus/Standard finished this job and "
-                   "produced a complete ODB. It does NOT prove the ODB has been extracted, "
-                   "that the compression is quasi-static, that contact/PBC behaved correctly, "
-                   "or that any scientific result is acceptable; dataset eligibility stays false.",
+        "warning": "The ODB here is an artifact produced by a successfully completed Abaqus job. "
+                   "It has NOT yet been opened or validated by odbAccess (that belongs to M4), and a "
+                   "completed solve does NOT prove quasi-static validity, correct contact/PBC behavior "
+                   "under load, or any scientific result; dataset eligibility stays false.",
     }
     if status == "SOLVE_FAILED":
         report["failure_reasons"] = (
@@ -404,6 +416,7 @@ def run_solve(datacheck_dir, output, abaqus_command=None, job_name=_DEFAULT_JOB_
             + (["%d ***ERROR entries" % diagnostics["error_count"]] if diagnostics["error_count"] else [])
             + (["fatal: " + "; ".join(f["message"] for f in diagnostics["fatal"][:3])]
                if diagnostics["fatal"] else [])
+            + (["zero-byte odb"] if zero_byte_odb else [])
             + (["missing required artifacts: " + ", ".join(missing)] if missing else [])
             + (["target step time not reached (%r of %r)" % (last_step_time, target_step_time)]
                if not target_time_reached else []))

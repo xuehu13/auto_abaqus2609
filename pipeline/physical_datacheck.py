@@ -375,8 +375,10 @@ def run_datacheck(build_dir, output, abaqus_command=None, job_name=_DEFAULT_JOB_
     generated, artifacts = _collect_artifacts(attempt, job_name, staged_paths)
     diagnostics = parse_diagnostics(artifacts["dat"], artifacts["msg"], artifacts["log"])
     missing = [kind for kind in _REQUIRED_ARTIFACTS if artifacts[kind] is None]
+    # An accepted datacheck needs the explicit 'ANALYSIS DATACHECK COMPLETE'
+    # marker; a clean-looking return code alone is not completion evidence.
     if (returncode != 0 or diagnostics["error_count"] or diagnostics["abort_evidence"]
-            or missing):
+            or missing or not diagnostics["datacheck_complete_evidence"]):
         status, claim = "DATACHECK_FAILED", "FAIL"
     elif diagnostics["warning_count"]:
         status, claim = "DATACHECK_COMPLETED_WITH_WARNINGS", "COMPLETED_WITH_WARNINGS"
@@ -424,6 +426,8 @@ def run_datacheck(build_dir, output, abaqus_command=None, job_name=_DEFAULT_JOB_
                if diagnostics["error_count"] else [])
             + (["abort evidence: " + ", ".join(diagnostics["abort_evidence"])]
                if diagnostics["abort_evidence"] else [])
+            + (["datacheck completion marker missing"]
+               if not diagnostics["datacheck_complete_evidence"] else [])
             + (["missing required artifacts: " + ", ".join(missing)] if missing else []))
     atomic_json(attempt / "datacheck_report.json", report)
     return report

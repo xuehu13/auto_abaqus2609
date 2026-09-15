@@ -137,6 +137,7 @@ Layer 4 Visualization Policy   曲线/云图/动画/论文图      ← postproce
 5. restart ownership：当前属 outputs 写盘策略；runtime/recovery 成熟后再评估迁移。
 6. demo material：non-production surrogate，不是论文真实材料。
 7. ~~Physical Data Check 尚未执行~~ **已执行并通过**（2026-09-15，Fig.1，COMPLETED_WITH_WARNINGS）；static validator 是面向本项目确定性关键词形式的小型解析器，不是通用 Abaqus INP parser。
+8. **Solve timeout 债务（M3.1 登记，deferred to M7 reliability）**：`subprocess.TimeoutExpired` 触发时 attempt 可能缺少 command.json/solve_report.json 等结构化证据，且只 kill launcher 层进程，SMALauncher/standard.exe 等子进程树可能残留，需要 reconciliation。watchdog/kill-tree/retry/resume 均属 M7。
 其余债务见 `docs/IMPLEMENTATION_PLAN.md` 技术债段与 `docs/PROJECT_STATUS.md` 差异清单（引用，不复述）。
 
 ## 12. Local evidence（不进 Git）
@@ -188,18 +189,22 @@ solve = NOT_RUN / odb_results_qa = NOT_RUN / dataset_eligible = false
 2. **当前开发机事实**：Abaqus 2026，Intel i7-13650HX（14 physical / 20 logical，Abaqus 按 14 CPU 计）。观察：`standard_parallel=all`（默认）在 General Contact preprocessing（`pre|Elem|ElemC|Econtp|ConnectivityAtNodes`）中**可复现**触发 `***ERROR: EXCEEDED THE MAXIMUM AMOUNT OF THREADS TO BE USED PER DOMAIN (<=100)`（手工 baseline INP 同样失败，与 M1 writer 无关）；`standard_parallel=solver` 使同一 deck 完整通过 Data Check。这是 reproducible machine/runtime-specific failure 的实验描述，**不是**对 Abaqus 内部缺陷的源码级证明。完整 10-attempt 诊断链见 `work/fig1_datacheck_m2_diagnostics_summary.json`。
 3. **不应泛化**：其他机器不要自动假设必须 `standard_parallel=solver`——若真实验证 `standard_parallel=all` 正常，即可使用（在 `config/datacheck_runtime.local.json` 中设置）。
 4. **当前 safe Data Check profile**：`cpus=1, standard_parallel=solver`（保守默认，已作为代码内置 safe default；机器可用 `config/datacheck_runtime.local.json` 覆盖，CLI `--cpus/--standard-parallel` 优先级最高）。解析顺序：CLI → local file → safe default；来源记录在 report 的 `execution_policy.source`（`cli` / `local_environment` / `safe_default`）。
-5. **M3 Solve execution policy = TO BE VALIDATED**。候选 profile：`cpus=4, standard_parallel=solver`（element ops 串行、solver 4 CPU 并行），但必须单独实验验证，不得自动继承 Data Check policy。
+5. **M3 Solve execution policy：已在本机与 20% validation case 上真实验证成功**（`cpus=4, standard_parallel=solver`，`work/fig1_solve_m3_20pct_003`）。This is validated for this machine and this validation case only; it is not a universal or performance-optimal profile for all machines/cases. Safe conservative fallback（`cpus=1, standard_parallel=solver`）保留。
 6. **Machine capability probe（Abaqus release/CPU/parallel modes/小型 datacheck 能力缓存）**：NOT IMPLEMENTED，未来需要时再设计。
 
 ## 15. M3 result 与下一步
 
 **M3 = DONE（COMPLETED_WITH_WARNINGS，20% validation case）。** 链路：同一真实 Fig.1 mesh bundle + local 20% physics config（唯一差异 `target_compression_strain 0.3→0.2`）→ `build-physical`（`work/fig1_build_m3_20pct_001`，PHYSICAL_INP_STATIC_VALIDATED，target U3=-2.0mm）→ `datacheck`（`work/fig1_datacheck_m3_20pct_001`，0 error/10 warnings）→ `solve`（`work/fig1_solve_m3_20pct_003`）。
 
-真实 Solve 结果（`solve_report.json`）：returncode=0、`Abaqus JOB fig1_m3_solve COMPLETED`、`.sta: THE ANALYSIS HAS COMPLETED SUCCESSFULLY`、last_step=1/last_increment=59/last_step_time=1.00=target、0 fatal error、17 warnings（含 M2 的 10 条继承 warning，全部保留未白名单）、完整 ODB 16,075,836 bytes。execution policy：`cpus=4, standard_parallel=solver`（local solve_runtime 配置，本机候选 profile）。
+真实 Solve 结果（`solve_report.json`）：returncode=0、`Abaqus JOB fig1_m3_solve COMPLETED`、`.sta: THE ANALYSIS HAS COMPLETED SUCCESSFULLY`、last_step=1/last_increment=59/last_step_time=1.00=target、0 fatal error、17 warnings、完整 ODB 16,075,836 bytes。execution policy：`cpus=4, standard_parallel=solver`（local solve_runtime 配置，本机候选 profile）。M3.1 hardening 后 report 亦含 `execution.wall_time_s`（`time.monotonic()` 实测 subprocess 时长）。
 
-**Scope**：M3 只证明自动提交+完成判定+完整 ODB；未读取 ODB、未提取曲线、未做准静态/接触/PBC 科学判断。M2 的 10 条 warning 与 solve 的 17 条 warning 是 M4 mechanics/contact QA 的强制输入。
+**Warning 语义（M3.1 澄清，勿混淆）**：solve 的 17 条 warning 中——10 条是 M2 Data Check 同一批 preprocessing warnings 在 solve `.dat` 中的**原样重现（signature-identical）**；7 条是 solve-only 的 `.msg` zero-moment warnings（`THERE IS ZERO MOMENT EVERYWHERE ...`）。`source_datacheck.warning_count=10` 是 provenance 继承记录，**不加进** solve 的 warning_count。全部未白名单。
 
-**下一步 = M4 ODB 自动提取与结果 QA**（含 30% 验收、准静态判定）。
+**Timing 事实（非性能基准）**：attempt 001 ≈25m07s（物理完成，被 .sta parser bug 误判 FAIL，bug 已修复并有真实格式回归测试）；attempt 002 ≈5m40s（误触发的重复运行，手动终止，仅保留为证据）；attempt 003 ≈16m33s（正式 accepted M3 solve）。用户体感"约1小时" = 001 完整求解 + 002 部分求解 + 003 完整求解 + parser 诊断/修复 + 测试 + 轮询等待。不同非线性 solve 即使同模型也可能有 wall-time 波动，16m33s/25m07s 不是稳定性能基准。
+
+**Scope**：M3 只证明自动提交+完成判定+ODB artifact 产出；未读取 ODB、未提取曲线、未做准静态/接触/PBC 科学判断。ODB 尚未由 odbAccess 打开或验证。M2 的 10 条 warning 与 solve 的 17 条 warning 是 M4 mechanics/contact QA 的强制输入。
+
+**下一步 = M4 ODB 自动提取与 raw result integrity**：对已成功的 Fig.1 20% solve ODB 用 Abaqus Python/odbAccess 自动提取 history/field/metadata 并验证 raw result 完整性。30% compression 是 20% extraction+QA 链路稳定之后的**新 validation target**，不是 M4 第一步。
 
 ## 16. 下一阶段明确禁止
 

@@ -1501,6 +1501,27 @@ class PhysicalDataCheckTests(_BuilderFixtureMixin, unittest.TestCase):
         self.assertEqual(error["line_number"], 1)
         self.assertIn("line=bad_region", error["message"])
 
+    def test_missing_completion_marker_fails(self):
+        # A clean-looking run without 'ANALYSIS DATACHECK COMPLETE' is not an
+        # accepted datacheck (M3.1 hardening of the completion gate).
+        source = Path(self.td.name) / "src_marker"
+        build_physical(self.npz, self.report, self.pairs_csv, self.physics,
+                       self.material, self.numerics, self.outputs, source)
+        marker = "ANALYSIS DATACHECK COMPLETE"
+        dat_without_marker = ("***WARNING: the general contact domain has double-sided facets\n"
+                              "DATA CHECK ENDED\n")
+        out = Path(self.td.name) / "no_marker"
+        fake, _calls = self._fake_process(dat=dat_without_marker,
+                                          log="Abaqus JOB fig1_m2_datacheck COMPLETED")
+        with mock.patch("pipeline.physical_datacheck._run_process", fake), \
+                mock.patch("pipeline.physical_datacheck.query_release",
+                           return_value={"release": "Abaqus 2026 TEST", "return_code": 0}):
+            report = pdc.run_datacheck(source, out, abaqus_command=self._fake_launcher(),
+                                       policy_path=Path(self.td.name) / "no_policy.json")
+        self.assertEqual(report["status"], "DATACHECK_FAILED")
+        self.assertIn("datacheck completion marker missing", report["failure_reasons"])
+        self.assertIs(report["diagnostics"]["datacheck_complete_evidence"], False)
+
     def test_warning_only_is_completed_with_warnings(self):
         source = self._source("warn")
         dat = ("***WARNING: overclosure is adjusted during strainfree initialization\n"
@@ -1884,6 +1905,59 @@ class PhysicalSolveTests(_BuilderFixtureMixin, unittest.TestCase):
         self.assertEqual(info["last_step"], 1)
         self.assertEqual(info["last_increment"], 59)
         self.assertEqual(info["last_step_time"], 1.0)
+
+    def test_other_job_completion_token_is_not_evidence(self):
+        # M3.1 hardening: the stdout COMPLETED token must name THIS job.
+        dc = self._make_accepted("other_job")
+
+        def fake_other_job(argv, cwd, timeout_s, stdout_path, stderr_path):
+            cwd = Path(cwd)
+            (cwd / (self.JOB + ".dat")).write_text("ANALYSIS COMPLETE TEXT", encoding="utf-8")
+            (cwd / (self.JOB + ".msg")).write_text("", encoding="utf-8")
+            (cwd / (self.JOB + ".sta")).write_text(self._STA_OK, encoding="utf-8")
+            (cwd / (self.JOB + ".odb")).write_bytes(b"fake complete odb")
+            Path(stdout_path).write_text("Abaqus JOB some_other_job COMPLETED\n", encoding="utf-8")
+            Path(stderr_path).write_text("", encoding="utf-8")
+            return 0
+
+        with mock.patch("pipeline.physical_solve._run_process_to_files", fake_other_job), \
+                mock.patch("pipeline.physical_solve.query_release",
+                           return_value={"release": "Abaqus 2026 TEST", "return_code": 0}):
+            report = pds.run_solve(dc, Path(self.td.name) / "other_job",
+                                   abaqus_command=self._fake_launcher(),
+                                   policy_path=Path(self.td.name) / "no_policy.json")
+        self.assertIs(report["completion"]["stdout_completed"], False)
+        self.assertEqual(report["status"], "SOLVE_FAILED")
+        self.assertIn("stdout completion token missing", report["failure_reasons"])
+
+    def test_zero_byte_odb_fails(self):
+        # M3.1 hardening: an existing but empty ODB is not completion evidence.
+        dc = self._make_accepted("zero_odb")
+
+        def fake_zero_odb(argv, cwd, timeout_s, stdout_path, stderr_path):
+            cwd = Path(cwd)
+            (cwd / (self.JOB + ".dat")).write_text("ANALYSIS COMPLETE TEXT", encoding="utf-8")
+            (cwd / (self.JOB + ".msg")).write_text("", encoding="utf-8")
+            (cwd / (self.JOB + ".sta")).write_text(self._STA_OK, encoding="utf-8")
+            (cwd / (self.JOB + ".odb")).write_bytes(b"")
+            Path(stdout_path).write_text("Abaqus JOB " + self.JOB + " COMPLETED\n", encoding="utf-8")
+            Path(stderr_path).write_text("", encoding="utf-8")
+            return 0
+
+        with mock.patch("pipeline.physical_solve._run_process_to_files", fake_zero_odb), \
+                mock.patch("pipeline.physical_solve.query_release",
+                           return_value={"release": "Abaqus 2026 TEST", "return_code": 0}):
+            report = pds.run_solve(dc, Path(self.td.name) / "zero_odb",
+                                   abaqus_command=self._fake_launcher(),
+                                   policy_path=Path(self.td.name) / "no_policy.json")
+        self.assertEqual(report["status"], "SOLVE_FAILED")
+        self.assertIn("zero-byte odb", report["failure_reasons"])
+
+    def test_wall_time_recorded(self):
+        dc = self._make_accepted("walltime")
+        report = self._run_solve(dc, Path(self.td.name) / "walltime")
+        self.assertIsInstance(report["execution"]["wall_time_s"], (int, float))
+        self.assertGreaterEqual(report["execution"]["wall_time_s"], 0)
 
     # Attempt protection (22).
     def test_existing_attempt_not_overwritten(self):

@@ -173,4 +173,4 @@ abaqus python abaqus_worker/export_history.py --odb F:/your_case/job.odb --out F
 
 ## 8. 接下来实际开发什么
 
-M1（writer）、M2（Physical Data Check）、M3（single-job real solve，Fig.1 20% validation case）均已完成并经真实 Abaqus 2026 验证。下一工程 milestone 是 **M4 ODB 自动提取与结果 QA**：用 Abaqus Python/odbAccess 从 `work/fig1_solve_m3_20pct_003` 的完整 ODB 提取 history/field，随后做 30% 验收、准静态判定、接触/PBC/能量检查（M2 的 10 条 warning 与 solve 的 17 条 warning 是该阶段 QA 的强制输入）。每一步的明确验收标准已经写入完整方案，避免重复设计。
+M1（writer）、M2（Physical Data Check）、M3（single-job real solve，Fig.1 20% validation case）均已完成并经真实 Abaqus 2026 验证。下一工程 milestone 是 **M4 ODB 自动提取与 raw result integrity**：第一步只对已成功的 Fig.1 20% solve ODB（`work/fig1_solve_m3_20pct_003`）用 Abaqus Python/odbAccess 自动提取 history/field/metadata 并验证 raw result 完整性；30% compression 是 20% extraction+QA 链路稳定之后的新 validation target（M2 的 10 条 warning 与 solve 的 17 条 warning 是该阶段 QA 的强制输入）。每一步的明确验收标准已经写入完整方案，避免重复设计。

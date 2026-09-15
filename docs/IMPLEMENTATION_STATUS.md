@@ -76,8 +76,10 @@
 - CLI：`pixi run cli solve --datacheck-dir <M2 attempt> --out <新attempt> [--abaqus-command] [--job-name] [--cpus] [--standard-parallel]`；非完成状态退出码 3。
 - **Runtime portability**：solve runtime policy 与模型完全分离，不进 physical.inp/identity keys；不得自动继承 M2 datacheck profile；M3 性能策略待单独验证。
 - 测试：新增 23 个 M3 回归测试（mock subprocess/release；覆盖 source 校验、staging、policy、命令契约、失败证据、三态判定、claims、attempt 保护、真实 .sta 格式回归）；总计 **138 core + 8 boundary 全过**。
-- **真实 20% solve 结果**（`work/fig1_solve_m3_20pct_003`，job=fig1_m3_solve，cpus=4 + standard_parallel=solver via local_environment）：**SOLVE_COMPLETED_WITH_WARNINGS**——returncode=0、stdout 完成 token、`.sta: THE ANALYSIS HAS COMPLETED SUCCESSFULLY`、last_step=1/last_increment=59/last_step_time=1.00=目标、0 error、17 warnings（含 M2 继承 10 条，全部保留）、完整 ODB 16,075,836 bytes。20% 目标为 validation profile（local config，唯一差异 strain 0.3→0.2），不是科研硬编码。
+- **真实 20% solve 结果**（`work/fig1_solve_m3_20pct_003`，job=fig1_m3_solve，cpus=4 + standard_parallel=solver via local_environment）：**SOLVE_COMPLETED_WITH_WARNINGS**——returncode=0、stdout 完成 token、`.sta: THE ANALYSIS HAS COMPLETED SUCCESSFULLY`、last_step=1/last_increment=59/last_step_time=1.00=目标、0 error、17 warnings、完整 ODB 16,075,836 bytes。20% 目标为 validation profile（local config，唯一差异 strain 0.3→0.2），不是科研硬编码。Timing：001≈25m07s（物理完成，被 .sta parser bug 误判 FAIL，已修复+回归测试）、002≈5m40s（误触发重复运行，手动终止，仅证据）、003≈16m33s（正式 accepted solve）；wall-time 波动属正常，不是性能基准。M3.1 后 report 含 `execution.wall_time_s`（monotonic 实测）。
+- **Warning 语义（M3.1 澄清）**：solve 的 17 条 warning = 10 条 M2 datacheck preprocessing warnings 在 solve `.dat` 中的原样重现（signature-identical）+ 7 条 solve-only `.msg` zero-moment warnings；`source_datacheck.warning_count=10` 是 provenance 记录，不加进 solve warning_count。全部未白名单，移交 M4 QA。
 - 诊断记录：第一次真实 solve（`work/fig1_solve_m3_20pct_001`）因 **M3 .sta parser bug**（真实 10 列三时间列格式未解析）误判 SOLVE_FAILED，bug 修复 + 回归测试后以新 attempt 003 验证；`work/fig1_solve_m3_20pct_002` 为误触发的重复运行，已终止并保留为证据。
+- M3.1 hardening（2026-09-15）：M2 accepted gate 增加 `ANALYSIS DATACHECK COMPLETE` marker 要求（缺失 → DATACHECK_FAILED）；M3 stdout COMPLETED token 绑定 `job_name`（其他 job 的 token 不作为证据）；ODB 增加 non-empty gate（0 字节 → SOLVE_FAILED，"zero-byte odb"）；report 增加 `execution.wall_time_s`；ODB claim 措辞修正为"produced by a successfully completed Abaqus job; NOT yet opened/validated by odbAccess (M4)"。
 
 ## 已实现且经过本地逻辑验证
 
