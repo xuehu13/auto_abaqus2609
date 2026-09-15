@@ -63,7 +63,9 @@ blocks/
 model_manifest.json
 ```
 
-**physical.inp DOES NOT EXIST YET**（M1-7 装配 + M2 验证之后才会有）。
+**physical.inp DOES NOT EXIST YET.**
+
+M1-7 将负责 assembly + static validation，并首次生成完整 physical.inp；M2 随后使用 Abaqus Physical Data Check 验证该完整 INP。**M1-7 生成成功 ≠ Abaqus 已验证通过。**
 
 ## 5. 四个独立配置域
 
@@ -151,9 +153,11 @@ Layer 4 Visualization Policy   曲线/云图/动画/论文图      ← postproce
 
 ## 13. reference PDF 约定
 
-本次全对话计划已在本机归档为：
+计划在本次会话结束后由用户本地归档为：
 `reference/2026-09-15_chatgpt_auto_abaqus_M1-6_checkpoint_full_conversation.pdf`
-性质：local evidence / conversation archive，**不是代码真值**；被 Git ignore，新机器不一定存在。正式工程状态以 Git docs + source + tests 为准。
+
+**截至本 handoff commit，该 PDF 尚未由本项目代码/GLM 创建；其存在性不能作为 Git checkout 的前提。**
+如果用户之后实际保存了该 PDF，它只是 Git-ignored local evidence / conversation archive，**不是代码真值**。正式工程状态以 Git docs + source + tests 为准。
 
 ## 14. 下一步
 
