@@ -13,10 +13,12 @@ from pipeline.diagnostics import classify_messages, completion_evidence, stagnat
 from pipeline.mesh_contract import load_bundle
 from pipeline.mesher_adapter import prepare
 from pipeline.pbc import relations, render_include
-from pipeline.physical_builder import (_load_numerics, _platen_plan, _render_boundary_conditions,
+from pipeline.physical_builder import (_load_numerics, _parse_includes,
+                                       _platen_plan, _render_boundary_conditions,
                                        _render_contact, _render_material_section,
-                                       _render_step_and_loading, _render_step_end,
-                                       build as build_physical)
+                                       _render_outputs, _render_step_and_loading,
+                                       _render_step_end, _run_static_stage,
+                                       _validate_static_model, build as build_physical)
 from pipeline.prepare_fe import prepare as prepare_fe
 from pipeline.state import StateStore
 
@@ -175,8 +177,8 @@ class RuntimeTests(unittest.TestCase):
                 load_bundle(mesh, report)
 
 
-class PhysicalBuilderTests(unittest.TestCase):
-    """The cube surface is a schema fixture; no physical model is built here."""
+class _BuilderFixtureMixin:
+    """Shared synthetic bundle + config fixture; the cube is schema-only."""
 
     def setUp(self):
         self.td = tempfile.TemporaryDirectory()
@@ -227,6 +229,7 @@ class PhysicalBuilderTests(unittest.TestCase):
                               self.material, numerics or self.numerics, self.outputs,
                               Path(self.td.name) / name)
 
+class PhysicalBuilderTests(_BuilderFixtureMixin, unittest.TestCase):
     def test_output_exists_rejected(self):
         self.build()
         with self.assertRaises(PipelineError) as caught:
@@ -278,21 +281,23 @@ class PhysicalBuilderTests(unittest.TestCase):
                     "shell_nodes", "shell_elements", "equation_count", "labels"):
             self.assertEqual(manifest[key], model_inputs[key])
 
-    def test_partial_build_is_not_runnable(self):
+    def test_static_build_completes_without_abaqus_claims(self):
         out = Path(self.td.name) / "build"
         manifest = self.build()
-        self.assertEqual(manifest["status"], "PHYSICAL_BUILD_PARTIAL")
+        self.assertEqual(manifest["status"], "PHYSICAL_INP_STATIC_VALIDATED")
         self.assertIs(manifest["dataset_eligible"], False)
         self.assertIs(manifest["blocks"]["material_section"]["allow_production_dataset"], False)
-        self.assertTrue(manifest["missing_stages"])
-        self.assertNotIn("material/section", " ".join(manifest["missing_stages"]))
-        self.assertTrue((out / "blocks/material_section.inc").is_file())
-        self.assertTrue((out / "blocks/rigid_platens.inc").is_file())
-        self.assertFalse((out / "physical.inp").exists())
-        self.assertFalse((out / "boundary_conditions.inc").exists())
-        self.assertFalse((out / "contact.inc").exists())
-        self.assertFalse((out / "step_loading.inc").exists())
-        self.assertFalse((out / "ingredients/physical.inp").exists())
+        missing = " ".join(manifest["missing_stages"])
+        for stage in ("physical datacheck", "solve", "ODB QA"):
+            self.assertIn(stage, missing)
+        for stage in ("physical.inp assembly", "static model validation"):
+            self.assertNotIn(stage, missing)
+        self.assertTrue((out / "physical.inp").is_file())
+        self.assertTrue((out / "build_report.json").is_file())
+        report = json.loads((out / "build_report.json").read_text())
+        self.assertEqual(report["abaqus_datacheck"], "NOT_RUN")
+        self.assertIs(report["dataset_eligible"], False)
+        self.assertTrue((out / "blocks/boundary_conditions.inc").is_file())
 
     def test_material_block_matches_config(self):
         self.build()
@@ -940,20 +945,12 @@ class PhysicalBuilderTests(unittest.TestCase):
                     "contact", "step_loading", "step_end"):
             self.assertEqual(base["blocks"][key]["sha256"], other["blocks"][key]["sha256"], key)
 
-    def test_outputs_region_change_and_provenance(self):
-        base = self.build("rbase")
-        # Unknown node set: rendered and collected, existence deferred to M1-7.
-        changed = json.loads(self.outputs.read_text())
-        changed["history_groups"][0]["requests"][1]["region"]["name"] = "TEST_SET"
-        changed_path = Path(self.td.name) / "outputs_region.json"
-        atomic_json(changed_path, changed)
-        other = build_physical(self.npz, self.report, self.pairs_csv, self.physics,
-                               self.material, self.numerics, changed_path,
-                               Path(self.td.name) / "rchanged")
-        self.assertIn("*Node Output, nset=TEST_SET",
-                      (Path(self.td.name) / "rchanged/blocks/outputs.inc").read_text())
-        self.assertIn("TEST_SET", other["blocks"]["outputs"]["required_regions"])
-        self.assertNotEqual(base["blocks"]["outputs"]["sha256"], other["blocks"]["outputs"]["sha256"])
+    def test_outputs_renderer_defers_region_existence_to_m1_7(self):
+        # Renderer-level contract: an undefined node set is rendered and collected
+        # by the renderer; existence checking is M1-7's final-build job.
+        config = json.loads(self.outputs.read_text())
+        config["history_groups"][0]["requests"][1]["region"]["name"] = "TEST_SET"
+        self.assertIn("*Node Output, nset=TEST_SET", _render_outputs(config))
 
     def test_outputs_profile_id_is_metadata_only(self):
         base = self.build("pid_base")
@@ -1056,6 +1053,237 @@ class PhysicalBuilderTests(unittest.TestCase):
         self.assertNotEqual(base["outputs_config_sha256"], other["outputs_config_sha256"])
         self.assertEqual(base["blocks"]["outputs"]["sha256"], other["blocks"]["outputs"]["sha256"])
         self.assertEqual(base["build_key"], other["build_key"])
+
+
+class PhysicalInpAssemblyTests(_BuilderFixtureMixin, unittest.TestCase):
+    """M1-7 regression: physical.inp assembly and repository static validation.
+
+    PASS here means repository-level internal self-consistency only; nothing in
+    this class claims Abaqus acceptance.
+    """
+
+    def _attempt(self, name):
+        folder = Path(self.td.name) / name
+        manifest = build_physical(self.npz, self.report, self.pairs_csv, self.physics,
+                                  self.material, self.numerics, self.outputs, folder)
+        return folder, manifest
+
+    def _failed_stage(self, name, manifest):
+        """Re-run the M1-7 stage on a prepared attempt and return the failing report."""
+        with self.assertRaises(PipelineError) as caught:
+            _run_static_stage(Path(self.td.name) / name, manifest)
+        self.assertEqual(caught.exception.code, "STATIC_VALIDATION_FAILED")
+        report = json.loads((Path(self.td.name) / name / "build_report.json").read_text())
+        self.assertEqual(report["status"], "STATIC_VALIDATION_FAILED")
+        self.assertEqual(report["static_validation"], "FAILED")
+        return report
+
+    def _failed_checks(self, name, manifest):
+        """Validate a deliberately tampered attempt (physical.inp is not republished here)."""
+        checks = _validate_static_model(Path(self.td.name) / name, manifest)
+        failed = sorted(key for key, check in checks.items() if check["status"] != "PASS")
+        self.assertTrue(failed, "expected at least one failed check")
+        return failed
+
+    def test_physical_inp_deterministic(self):
+        one, one_manifest = self._attempt("det_one")
+        two, two_manifest = self._attempt("det_two")
+        for rel in ("physical.inp", "build_report.json", "model_manifest.json"):
+            self.assertEqual((one / rel).read_bytes(), (two / rel).read_bytes(), rel)
+        self.assertEqual(one_manifest["build_key"], two_manifest["build_key"])
+
+    def test_exact_include_order(self):
+        folder, _manifest = self._attempt("order")
+        includes = _parse_includes((folder / "physical.inp").read_text())
+        self.assertEqual(includes, [
+            "ingredients/shell_mesh.inc", "blocks/material_section.inc",
+            "blocks/rigid_platens.inc", "ingredients/lateral_pbc.inc",
+            "blocks/boundary_conditions.inc", "blocks/contact.inc",
+            "blocks/step_loading.inc", "blocks/outputs.inc", "blocks/step_end.inc"])
+        text = (folder / "physical.inp").read_text()
+        for target in includes:
+            self.assertNotIn(":", target)
+            self.assertNotIn("..", target)
+            self.assertNotIn("\\", target)
+        self.assertIn("*Include, input=blocks/step_end.inc", text)
+
+    def test_missing_include_artifact_fails(self):
+        folder, manifest = self._attempt("missing_inc")
+        (folder / "blocks/contact.inc").unlink()
+        report = self._failed_stage("missing_inc", manifest)
+        self.assertIn("artifact_integrity", report["failed_checks"])
+
+    def test_tampered_block_sha_fails(self):
+        folder, manifest = self._attempt("tampered")
+        with (folder / "blocks/material_section.inc").open("a", encoding="utf-8") as stream:
+            stream.write("** tampered\n")
+        report = self._failed_stage("tampered", manifest)
+        self.assertIn("artifact_integrity", report["failed_checks"])
+        self.assertTrue(any("sha256 mismatch" in detail
+                            for detail in report["static_checks"]["artifact_integrity"]["details"]))
+
+    def test_duplicate_node_label_fails(self):
+        folder, manifest = self._attempt("dup_node")
+        with (folder / "ingredients/shell_mesh.inc").open("a", encoding="utf-8") as stream:
+            stream.write("*Node\n1, 0.0, 0.0, 0.0\n")
+        report = self._failed_stage("dup_node", manifest)
+        self.assertIn("label_uniqueness", report["failed_checks"])
+
+    def test_duplicate_element_label_fails(self):
+        folder, manifest = self._attempt("dup_elem")
+        with (folder / "ingredients/shell_mesh.inc").open("a", encoding="utf-8") as stream:
+            stream.write("*Element, type=S3R, elset=SHELL_ALL\n1, 2, 3, 4\n")
+        report = self._failed_stage("dup_elem", manifest)
+        self.assertIn("label_uniqueness", report["failed_checks"])
+
+    def test_undefined_node_in_nset_fails(self):
+        folder, manifest = self._attempt("bad_nset")
+        with (folder / "blocks/rigid_platens.inc").open("a", encoding="utf-8") as stream:
+            stream.write("*Nset, nset=BOGUS_SET\n999999,\n")
+        report = self._failed_stage("bad_nset", manifest)
+        self.assertIn("node_reference_integrity", report["failed_checks"])
+
+    def test_undefined_node_in_element_connectivity_fails(self):
+        folder, manifest = self._attempt("bad_elem")
+        with (folder / "ingredients/shell_mesh.inc").open("a", encoding="utf-8") as stream:
+            stream.write("*Element, type=S3R, elset=SHELL_ALL\n99, 1, 2, 999999\n")
+        report = self._failed_stage("bad_elem", manifest)
+        self.assertIn("element_reference_integrity", report["failed_checks"])
+
+    def test_nonexistent_output_region_fails_final_build(self):
+        changed = json.loads(self.outputs.read_text())
+        changed["history_groups"][0]["requests"][1]["region"]["name"] = "TEST_SET"
+        outputs_path = Path(self.td.name) / "outputs_testset.json"
+        atomic_json(outputs_path, changed)
+        out = Path(self.td.name) / "testset_attempt"
+        with self.assertRaises(PipelineError) as caught:
+            build_physical(self.npz, self.report, self.pairs_csv, self.physics,
+                           self.material, self.numerics, outputs_path, out)
+        self.assertEqual(caught.exception.code, "STATIC_VALIDATION_FAILED")
+        # Failure evidence is retained; nothing is marked successful.
+        self.assertTrue((out / "physical.inp").is_file())
+        report = json.loads((out / "build_report.json").read_text())
+        for check in ("output_region_integrity", "region_integrity"):
+            self.assertIn(check, report["failed_checks"])
+        failed_manifest = json.loads((out / "model_manifest.json").read_text())
+        self.assertEqual(failed_manifest["status"], "PHYSICAL_INP_STATIC_VALIDATION_FAILED")
+        self.assertIs(failed_manifest["dataset_eligible"], False)
+
+    def test_missing_end_step_fails(self):
+        folder, manifest = self._attempt("no_end")
+        (folder / "blocks/step_end.inc").write_text("** end step removed\n", encoding="utf-8")
+        report = self._failed_stage("no_end", manifest)
+        self.assertIn("step_pairing", report["failed_checks"])
+
+    def test_duplicated_step_fails(self):
+        folder, manifest = self._attempt("dup_step")
+        text = (folder / "physical.inp").read_text()
+        (folder / "physical.inp").write_text(
+            text.replace("*Include, input=blocks/step_end.inc",
+                         "*Include, input=blocks/step_loading.inc"), encoding="utf-8")
+        failed = self._failed_checks("dup_step", manifest)
+        self.assertIn("step_pairing", failed)
+        self.assertIn("include_graph", failed)
+
+    def test_wrong_step_output_order_fails(self):
+        folder, manifest = self._attempt("swap_order")
+        lines = (folder / "physical.inp").read_text().splitlines()
+        i = lines.index("*Include, input=blocks/step_loading.inc")
+        j = lines.index("*Include, input=blocks/outputs.inc")
+        lines[i], lines[j] = lines[j], lines[i]
+        (folder / "physical.inp").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        failed = self._failed_checks("swap_order", manifest)
+        self.assertIn("step_order", failed)
+        self.assertIn("include_graph", failed)
+
+    def test_target_displacement_mismatch_fails(self):
+        folder, manifest = self._attempt("target")
+        bad = dict(manifest, target_displacement_mm=manifest["target_displacement_mm"] * 2)
+        report = self._failed_stage("target", bad)
+        self.assertIn("target_consistency", report["failed_checks"])
+
+    def test_rp_x_ctrl_constrained_fails(self):
+        folder, manifest = self._attempt("rpx")
+        block = folder / "blocks/boundary_conditions.inc"
+        block.write_text(block.read_text(encoding="utf-8").replace(
+            "RP_BOTTOM, 1, 1", "RP_X_CTRL, 1, 1"), encoding="utf-8")
+        report = self._failed_stage("rpx", manifest)
+        self.assertIn("boundary_contract", report["failed_checks"])
+
+    def test_rp_y_ctrl_constrained_fails(self):
+        folder, manifest = self._attempt("rpy")
+        block = folder / "blocks/boundary_conditions.inc"
+        block.write_text(block.read_text(encoding="utf-8").replace(
+            "RP_BOTTOM, 2, 2", "RP_Y_CTRL, 2, 2"), encoding="utf-8")
+        report = self._failed_stage("rpy", manifest)
+        self.assertIn("boundary_contract", report["failed_checks"])
+
+    def test_rp_top_u3_model_level_fixed_fails(self):
+        folder, manifest = self._attempt("top_u3")
+        with (folder / "blocks/boundary_conditions.inc").open("a", encoding="utf-8") as stream:
+            stream.write("RP_TOP, 3, 3\n")
+        report = self._failed_stage("top_u3", manifest)
+        self.assertIn("boundary_contract", report["failed_checks"])
+
+    def test_missing_step_u3_loading_fails(self):
+        folder, manifest = self._attempt("no_u3")
+        block = folder / "blocks/step_loading.inc"
+        kept = [line for line in block.read_text(encoding="utf-8").splitlines()
+                if not line.startswith("RP_TOP, 3, 3")]
+        block.write_text("\n".join(kept) + "\n", encoding="utf-8")
+        report = self._failed_stage("no_u3", manifest)
+        self.assertIn("boundary_contract", report["failed_checks"])
+
+    def test_time_amplitude_mismatch_fails(self):
+        folder, manifest = self._attempt("time")
+        bad = dict(manifest, physics=dict(manifest["physics"], time_period_s=2.0))
+        report = self._failed_stage("time", bad)
+        self.assertIn("time_amplitude_consistency", report["failed_checks"])
+
+    def test_final_manifest_stays_dataset_ineligible(self):
+        folder, manifest = self._attempt("eligible")
+        self.assertIs(manifest["dataset_eligible"], False)
+        disk = json.loads((folder / "model_manifest.json").read_text())
+        self.assertIs(disk["dataset_eligible"], False)
+        report = json.loads((folder / "build_report.json").read_text())
+        self.assertIs(report["dataset_eligible"], False)
+
+    def test_successful_static_build_writes_build_report(self):
+        folder, manifest = self._attempt("report")
+        path = folder / "build_report.json"
+        self.assertTrue(path.is_file())
+        report = json.loads(path.read_text())
+        self.assertEqual(report["status"], "STATIC_VALIDATION_PASSED")
+        self.assertEqual(report["static_validation"], "PASS")
+        for stage in ("abaqus_datacheck", "solve", "odb_qa"):
+            self.assertEqual(report[stage], "NOT_RUN", stage)
+        self.assertEqual(report["model_key"], manifest["identity"]["model_key"])
+        self.assertEqual(report["scaffold_key"], manifest["scaffold_key"])
+        self.assertEqual(report["build_key"], manifest["build_key"])
+        self.assertEqual(report["builder"], manifest["builder"])
+        expected_checks = {"artifact_integrity", "include_graph", "label_uniqueness",
+                           "node_reference_integrity", "element_reference_integrity",
+                           "region_integrity", "pbc_reference_integrity", "boundary_contract",
+                           "step_pairing", "step_order", "target_consistency",
+                           "time_amplitude_consistency", "output_region_integrity"}
+        self.assertEqual(set(report["static_checks"]), expected_checks)
+        for name, check in report["static_checks"].items():
+            self.assertEqual(check["status"], "PASS", name)
+        self.assertEqual(manifest["build_report"]["sha256"], file_hash(path))
+
+    def test_successful_static_build_writes_physical_inp(self):
+        folder, manifest = self._attempt("inp")
+        path = folder / "physical.inp"
+        self.assertTrue(path.is_file())
+        self.assertEqual(manifest["physical_inp"]["path"], "physical.inp")
+        self.assertEqual(manifest["physical_inp"]["sha256"], file_hash(path))
+        self.assertEqual(manifest["status"], "PHYSICAL_INP_STATIC_VALIDATED")
+        text = path.read_text()
+        self.assertTrue(text.startswith("**"))
+        self.assertIn("*Include, input=ingredients/shell_mesh.inc", text)
+        for rel in ("ingredients/shell_mesh.inc", "ingredients/lateral_pbc.inc",
+                    "blocks/step_end.inc"):
+            self.assertTrue((folder / rel).is_file(), rel)
 
 
 if __name__ == "__main__":

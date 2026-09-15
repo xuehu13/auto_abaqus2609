@@ -39,7 +39,7 @@ def main():
     p.add_argument("--physics", default=str(ROOT / "config/physics.example.json"))
     p.add_argument("--material", default=str(ROOT / "config/materials/demo_surrogate.json"))
     p.add_argument("--out", required=True)
-    p = sub.add_parser("build-physical", help="Validate numerics and prepare the physical build scaffold from verified ingredients; no physical INP yet")
+    p = sub.add_parser("build-physical", help="Assemble physical.inp from verified deterministic blocks and run repository static validation; Abaqus is not invoked")
     p.add_argument("--npz", required=True)
     p.add_argument("--report", required=True)
     p.add_argument("--pairs", required=True)
@@ -65,9 +65,13 @@ def main():
                                   "PBC representative equations", "shell/PBC include generation",
                                   "SQLite stage ledger primitives", "stagnation and diagnostic primitives",
                                   "aligned history curve QA",
-                                  "partial physical builder: material/section + rigid platens/control nodes + platen BCs + General Contact + Dynamic Implicit step/loading + configurable output requests + manifest, no complete physical.inp, no Abaqus validation"],
-                  "next": ["complete physical INP builder", "version-specific launcher and monitor",
-                           "ODB contact/PBC/field extraction", "orchestration, reconciliation, acceptance and export"]}
+                                  "complete physical builder (M1): ingredients + material/section + rigid "
+                                  "platens/control nodes + platen BCs + General Contact + Dynamic Implicit "
+                                  "step/loading + configurable output requests + physical.inp assembly with "
+                                  "repository static validation (build_report), no Abaqus invocation"],
+                  "next": ["M2 physical data check: version-specific Abaqus launcher and monitor",
+                           "single-job solve and ODB contact/PBC/field extraction",
+                           "orchestration, reconciliation, acceptance and export"]}
     elif args.command == "prepare-mesher":
         result = prepare_mesher(args.vendor, args.case, args.environment, args.out, args.cgal_build)
     elif args.command == "prepare-fe":

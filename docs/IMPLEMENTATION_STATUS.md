@@ -1,6 +1,6 @@
 # v0.1 实施状态与后续接口
 
-## M1 进度（M1-1/M1-2 checkpoint 2026-09-14；M1-3a/M1-3b checkpoint 2026-09-15）
+## M1 进度（M1-1..M1-6 checkpoint 2026-09-15；M1-7 checkpoint 2026-09-15 → **M1 BUILD complete**）
 
 ### M1-1 已完成：physical builder scaffold
 - `pipeline/physical_builder.py` 与 `run.py build-physical` CLI（Pixi default 守卫不变，现有命令语义未改）。
@@ -53,8 +53,15 @@
 - identity 术语：`model_key`=物理模型身份；`scaffold_key`=当前 pre-output build-input/provenance 身份；`build_key`=build provenance + rendered block identity。outputs 的 config SHA 仅 provenance、block SHA 进 build_key；identity 统一分层留待 batch/cache 阶段（非阻塞债务）。
 - `status=PHYSICAL_BUILD_PARTIAL`；`dataset_eligible=false`；无 physical.inp；无 Abaqus 验证；`build_key` 含七个 block SHA。
 
-### M1-7 未开始：physical.inp assembly + static validation
-- 待办：按 step_loading → outputs → step_end 顺序装配 physical.inp（原子发布）+ static validation（region 引用存在性、`*Step`/`*End Step` 配对、label/集合契约、build_key 一致性）。
+### M1-7 已完成（2026-09-15）：physical.inp assembly + static validation
+- `pipeline/physical_builder.py` 新增 `_assemble_physical_inp` / `_validate_static_model` / `_run_static_stage`：顶层 `physical.inp` 只含 9 条固定顺序 `*Include`（shell_mesh → material_section → rigid_platens → lateral_pbc → boundary_conditions → contact → step_loading → outputs → step_end），全部为 attempt 内相对路径（禁止盘符/绝对/`..`），`atomic_text` 原子发布。
+- 13 项 repository-owned static checks：`artifact_integrity`（文件存在 + manifest block SHA256 对盘）、`include_graph`（顺序/重复/安全路径/目标存在）、`label_uniqueness`（node/element 定义重复 + manifest RP label/range 契约）、`node_reference_integrity`（nset/equation/rigid-body 引用）、`element_reference_integrity`（connectivity/elset 引用）、`region_integrity`（SHELL_ALL/PLATE_*/RP_* + `required_regions` 存在且非空）、`pbc_reference_integrity`（pbc_map 计数对 manifest、mode=lateral_xy、无隐藏 Z、macro DOF 契约、dependent node 引用）、`boundary_contract`（RP_BOTTOM 1-6 / RP_TOP 1,2,4,5,6 / macro RP 零 Boundary / step 内唯一 `*Boundary, amplitude=AMP_COMPRESSION` = RP_TOP U3）、`step_pairing`、`step_order`（Step < outputs/Dynamic/boundary < End Step，amplitude 在 Step 外）、`target_consistency`（`-strain×L` 对 manifest 对 step 渲染值，只检查不覆盖）、`time_amplitude_consistency`（amplitude 端点 = `*Dynamic` 总时 = physics.time_period_s）、`output_region_integrity`（渲染 region == manifest required_regions 且已定义）。
+- 解析器为只针对本项目确定性关键词形式的小型 line-oriented helper，不是通用 Abaqus INP parser。
+- 失败路径：attempt 保留全部证据；`build_report.json` 写 `STATIC_VALIDATION_FAILED` + `failed_checks`；manifest 写 `PHYSICAL_INP_STATIC_VALIDATION_FAILED`；抛 `PipelineError("STATIC_VALIDATION_FAILED")`；不把 manifest 标成功。
+- 成功路径：`build_report.json`（status=STATIC_VALIDATION_PASSED，static_validation=PASS，abaqus_datacheck/solve/odb_qa=NOT_RUN，dataset_eligible=false，逐 check PASS/FAILED + includes/physical_inp SHA256）；manifest 更新 `status=PHYSICAL_INP_STATIC_VALIDATED`，`missing_stages` 仅剩 physical datacheck/solve/ODB QA，新增 `physical_inp`/`build_report` artifact metadata；`build_key` 语义未改（identity debt 保留）。
+- 测试：新增 21 个 M1-7 回归测试（`PhysicalInpAssemblyTests`）；`_render_outputs` 对不存在 region（TEST_SET）仍只渲染不检查存在性（renderer 职责不变），final `build_physical` 则必须 STATIC_VALIDATION_FAILED（有测试）。`pixi run test`：94/94 core + 8/8 Pixi boundary。
+- 真实 Fig.1 smoke：`work/fig1_build_m17_smoke_001`（npz/report/pairs 指纹与 M1-6 smoke manifest 一致）→ 13/13 checks PASS，`static_validation=PASS`，`abaqus_datacheck=NOT_RUN`，`dataset_eligible=false`。
+- **Abaqus 未被调用**：static validation PASS ≠ Abaqus keyword parser 接受 ≠ Data Check 通过 ≠ 可求解。
 
 ## 已实现且经过本地逻辑验证
 
@@ -72,7 +79,7 @@
 
 ## 下一阶段模块接口
 
-这些是**待实现接口**，不是当前可调用功能。实现应以基础模块为支撑，而非重写已有网格。
+以下是后续里程碑（M2 起）的**待实现接口**，不是当前可调用功能。`build_physical_inp` 已由 `pipeline/physical_builder.py::build`（M1-1..M1-7）实现：-> physical.inp, includes, model_manifest, build_report（static validation only）。实现应以基础模块为支撑，而非重写已有网格。
 
 ```python
 # 输入/输出均应保存为带 schema_version 的 manifest；此处是类型示意。

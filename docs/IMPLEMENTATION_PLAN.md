@@ -10,7 +10,9 @@
 
 还要在开发开始时复核源文件 hash，固定 mesh_key / manual_model_key；按“完整 20% 基准”“目标 30%”“历史两次中断”分别登记，不复用含糊的 `fig1` 成功状态。旧文件若变化，产生新的快照，不覆盖本次快照。无需为读取资料再等用户补充。
 
-## 阶段 B：完整物理 INP writer（下一个可执行任务）
+## 阶段 B：完整物理 INP writer（**已实现 2026-09-15，M1-1..M1-7 完成**）
+
+> 状态（2026-09-15）：以下 1–9 步已全部实现于 `pipeline/physical_builder.py`（M1-1..M1-7）；第 9 步的静态报告即 `build_report.json` 的 13 项 static checks。真实 Fig.1 smoke 见 `work/fig1_build_m17_smoke_001`。仅剩"真实 Data Check 通过才可标为 Abaqus 输入验证通过"尚未发生 → 下一阶段（M2）。
 
 建议接口 `build_physical_inp(mesh_bundle, physics, material, numerics, outputs, attempt_dir)`，由普通 `diffumeta_geo` Python 执行。新增外层模块和 CLI；保留 `prepare-fe` 作为只准备片段的入口，避免悄悄改变既有语义。
 

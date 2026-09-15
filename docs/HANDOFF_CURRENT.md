@@ -1,8 +1,9 @@
-# Current Handoff — M1-6 Checkpoint
+# Current Handoff — M1-7 Checkpoint (M1 BUILD complete)
 
 更新时间：2026-09-15
 项目：auto_abaqus2609
 branch：main
+基准 HEAD：fe80e31d932baa18363325c00331d02fac78dd3f（M1-7 完成为本地工作区修改，按规则未 commit/push）
 M1-6 feature commit：6b83d2c990907b093e882f1c7477aeea0757f2b3（`feat: add configurable output requests to physical builder`）
 
 本文是快速接管摘要，**不替代** AGENTS/ROADMAP/PROJECT_STATUS/IMPLEMENTATION_STATUS/IMPLEMENTATION_PLAN/LOCAL_ENVIRONMENT。
@@ -42,7 +43,7 @@ Fig.1、论文参数、手工模型只是当前 validation baseline/profile。�
 | M1-4 contact | DONE |
 | M1-5 step + loading | DONE |
 | M1-6 output requests | DONE |
-| M1-7 assembly/static validation | NOT STARTED |
+| M1-7 assembly/static validation | DONE（2026-09-15） |
 | M2 Physical Data Check | NOT STARTED |
 | M3 solve / M4 ODB extraction | NOT STARTED |
 
@@ -52,20 +53,14 @@ Fig.1、论文参数、手工模型只是当前 validation baseline/profile。�
 
 ```
 ingredients/        （shell_mesh.inc / lateral_pbc.inc / pbc_map.json / model_inputs.json）
-blocks/
-  material_section.inc
-  rigid_platens.inc
-  boundary_conditions.inc
-  contact.inc
-  step_loading.inc
-  outputs.inc
-  step_end.inc
-model_manifest.json
+blocks/             （material_section / rigid_platens / boundary_conditions / contact /
+                      step_loading / outputs / step_end .inc）
+physical.inp        （顶层 deck，仅 9 条固定顺序 *Include，相对路径，原子发布）
+build_report.json   （13 项 static checks 逐项 PASS/FAILED + include SHA256）
+model_manifest.json （status=PHYSICAL_INP_STATIC_VALIDATED，dataset_eligible=false）
 ```
 
-**physical.inp DOES NOT EXIST YET.**
-
-M1-7 将负责 assembly + static validation，并首次生成完整 physical.inp；M2 随后使用 Abaqus Physical Data Check 验证该完整 INP。**M1-7 生成成功 ≠ Abaqus 已验证通过。**
+固定装配顺序：shell_mesh → material_section → rigid_platens → lateral_pbc → boundary_conditions → contact → step_loading → outputs → step_end。static validation PASS **只证明仓库级内部自洽**（artifact SHA、include 图、label/引用契约、region 存在性、PBC 引用、boundary/loading 契约、step 结构、target/time 一致性）；**不证明 Abaqus 接受该 deck**。M2 用 Abaqus Physical Data Check 验证完整 INP。真实 Fig.1 smoke：`work/fig1_build_m17_smoke_001`（13/13 checks PASS，static_validation=PASS，abaqus_datacheck=NOT_RUN，dataset_eligible=false）。
 
 ## 5. 四个独立配置域
 
@@ -121,9 +116,9 @@ Layer 4 Visualization Policy   曲线/云图/动画/论文图      ← postproce
 
 ## 9. 已验证 / 未验证边界
 
-**已验证**：Python/Pixi 逻辑（81/81 tests：73 core + 8 boundary）；真实 Fig.1 mesh bundle smoke；block 确定性渲染；config 隔离（loading/contact/platen 参数互不泄漏）；hand-INP 语义逐项对比。
+**已验证**：Python/Pixi 逻辑（94/94 core + 8/8 Pixi boundary，2026-09-15）；真实 Fig.1 mesh bundle smoke；block 确定性渲染；**M1-7 physical.inp 确定性装配 + 13 项仓库静态检查（合成 fixture 与真实 Fig.1 smoke 均通过）**；config 隔离（loading/contact/platen 参数互不泄漏）；hand-INP 语义逐项对比。
 
-**尚未验证**：完整 physical.inp；Physical Data Check；自动接触初始化；自动模型 requested-output 的真实 ODB 行为（PRESELECT 采样密度）；30% solve；准静态科学有效性（`quasi_static_status=pending_qa`）；production dataset eligibility。
+**尚未验证**：Abaqus keyword parser 是否接受该 deck；Physical Data Check；自动接触初始化；自动模型 requested-output 的真实 ODB 行为（PRESELECT 采样密度）；30% solve；准静态科学有效性（`quasi_static_status=pending_qa`）；production dataset eligibility。
 
 **`dataset_eligible=false`（builder 硬性保证）。**
 
@@ -135,17 +130,18 @@ Layer 4 Visualization Policy   曲线/云图/动画/论文图      ← postproce
 ## 11. 当前重要技术债
 
 1. Shell Section Simpson 积分点 = 5：baseline-fixed，出现第二种 section policy 再 config 化。
-2. identity 混合语义：`model_key`=物理模型身份 / `scaffold_key`=pre-output build-input+provenance / `build_key`=build provenance + rendered block identity；batch/cache 阶段统一，M1-7 前不重构。
+2. identity 混合语义：`model_key`=物理模型身份 / `scaffold_key`=pre-output build-input+provenance / `build_key`=build provenance + rendered block identity（M1-7 未把 physical.inp/build_report SHA 并入 build_key，只作为独立 manifest metadata）；batch/cache 阶段统一。`numerics.example.json` 同时含 step numerics 与 cpus/retry/wall limit 且整体进入 scaffold identity，长期需拆分（本次未改）。
 3. explicit output-disable policy（field-only/history-only/zero-field）：未实现；空 group → NOT_IMPLEMENTED，禁止依赖 Abaqus implicit default。
 4. PRESELECT-only 自动 ODB 采样：仅 keyword semantics reproduced，M2 后用真实自动模型 ODB 复核。
 5. restart ownership：当前属 outputs 写盘策略；runtime/recovery 成熟后再评估迁移。
 6. demo material：non-production surrogate，不是论文真实材料。
-7. **Physical Data Check 尚未执行。**
+7. **Physical Data Check 尚未执行**；static validator 是面向本项目确定性关键词形式的小型解析器，不是通用 Abaqus INP parser。
 其余债务见 `docs/IMPLEMENTATION_PLAN.md` 技术债段与 `docs/PROJECT_STATUS.md` 差异清单（引用，不复述）。
 
 ## 12. Local evidence（不进 Git）
 
 `work/` 与 `reference/` 均为 Git-ignored local-only，新机器 clone 后**可能不存在**：
+- `work/fig1_build_m17_smoke_001/`（M1-7 真实 Fig.1 build smoke：physical.inp + build_report.json，13/13 checks PASS）
 - `work/takeover_20260913_01/physical_snapshot/Fig1_Compression.inp`（hand keyword 语义 baseline）
 - 同目录 `.dat/.msg/.sta/.log/.odb`（接触/求解证据）
 - `physical_regions.json` / `physical_raw_history.json`（20% ODB 提取实证）
@@ -167,9 +163,7 @@ Layer 4 Visualization Policy   曲线/云图/动画/论文图      ← postproce
 
 ## 14. 下一步
 
-**下一次新会话不要立即编码 M1-7。** 先做 **M1-1~M1-6 stage-wide review**：
-goal alignment / config boundaries / block ownership / identity debt / current validation claims / M1-7 scope。
-总审查通过后，下一工程 milestone 才是 **M1-7 physical.inp assembly + static validation**；随后尽快进入 **M2 Physical Data Check**。不要继续无限拆分 BUILD milestone。
+**M1 BUILD 已完成（M1-1..M1-7 DONE）。** 不要继续拆分 M1-8/M1-9。下一工程 milestone 是 **M2 Physical Data Check**：自动启动 Abaqus Data Check 验证 `physical.inp`，保存命令/退出码/`.dat/.msg/.log` 与初始化 ODB 证据。M1-7 static validation PASS ≠ Abaqus 接受；Abaqus 拒绝输入的可能仍然存在，这正是 M2 要回答的问题。
 
 ## 15. 下一阶段明确禁止
 
@@ -181,6 +175,6 @@ Do NOT:
 - implement UMAT
 - implement n×n×n
 - change frozen vendor mesher
-- launch full solve before M1-7/M2
+- launch full solve before M2
 - silently modify physics for convergence
 ```

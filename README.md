@@ -1,6 +1,6 @@
 # DiffuMeta Automation
 
-Abaqus 周期性多孔表面网格自动化与压缩仿真数据流水线：把冻结的 `periodic_surface_mesher v1.0` 网格模块和手工 Abaqus 物理模型接成可管理的批量系统。当前 v0.1 提供隔离网格准备、FE 输入片段、曲线 QA 与状态账本基础；完整物理 INP writer、调度与恢复尚未实现（见 `docs/IMPLEMENTATION_STATUS.md` 与 `docs/PROJECT_STATUS.md`）。
+Abaqus 周期性多孔表面网格自动化与压缩仿真数据流水线：把冻结的 `periodic_surface_mesher v1.0` 网格模块和手工 Abaqus 物理模型接成可管理的批量系统。当前 v0.1 提供隔离网格准备、FE 输入片段、完整物理 `physical.inp` 自动装配（含仓库级静态验证）、曲线 QA 与状态账本基础；Abaqus Physical Data Check、调度与恢复尚未实现（见 `docs/IMPLEMENTATION_STATUS.md` 与 `docs/PROJECT_STATUS.md`）。
 
 ## 环境：Pixi 是唯一普通环境管理器
 
@@ -24,7 +24,7 @@ pixi run build-cgal --check-only        # 编译工具链检查；实际构建�
 
 每次输出必须使用新的 `work/<attempt>` 目录，拒绝覆盖。
 
-当前 `build-physical` 生成 partial 物理 blocks（7 个）：`blocks/material_section.inc`、`blocks/rigid_platens.inc`、`blocks/boundary_conditions.inc`、`blocks/contact.inc`、`blocks/step_loading.inc`、`blocks/outputs.inc`、`blocks/step_end.inc` 与 `model_manifest.json`。output policy 是独立 config（`--outputs config/outputs.example.json`；Fig.1 输出只是当前 baseline profile）。仍不生成完整 `physical.inp`，也没有 Abaqus Physical Data Check，不是 production-ready。
+当前 `build-physical` 生成完整物理 build：`ingredients/`（shell_mesh / lateral_pbc / pbc_map / model_inputs）、7 个 blocks（`material_section.inc`、`rigid_platens.inc`、`boundary_conditions.inc`、`contact.inc`、`step_loading.inc`、`outputs.inc`、`step_end.inc`）、顶层 `physical.inp`（9 条固定顺序相对路径 `*Include`，原子发布）、`build_report.json`（13 项仓库级 static checks）与 `model_manifest.json`（`status=PHYSICAL_INP_STATIC_VALIDATED`，`dataset_eligible=false`）。output policy 是独立 config（`--outputs config/outputs.example.json`；Fig.1 输出只是当前 baseline profile）。**static validation PASS 只证明仓库级内部自洽，不证明 Abaqus 接受该 deck**：Physical Data Check、solve、ODB QA 尚未执行，不是 production-ready。
 
 ## 目录结构
 
@@ -170,4 +170,4 @@ abaqus python abaqus_worker/export_history.py --odb F:/your_case/job.odb --out F
 
 ## 8. 接下来实际开发什么
 
-先接通完整 physical INP writer，并用真实 Fig.1 在 Abaqus 2026 做 Physical Data Check。随后完成同一个 case 的 30% 求解、ODB 提取、质量检查，再接上全队列的执行与恢复。每一步的明确验收标准已经写入完整方案，避免重复设计。
+完整 physical INP writer（M1-1..M1-7）已完成并通过仓库级静态验证与真实 Fig.1 smoke。下一步是用真实 Fig.1 在 Abaqus 2026 做 **Physical Data Check（M2）**，随后完成同一个 case 的 30% 求解、ODB 提取、质量检查，再接上全队列的执行与恢复。每一步的明确验收标准已经写入完整方案，避免重复设计。

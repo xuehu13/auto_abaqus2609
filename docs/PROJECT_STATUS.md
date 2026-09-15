@@ -1,10 +1,10 @@
 # 工程已验证状态
 
-> **2026-09-15 development checkpoint（M1-1..M1-6）**：M1-1 scaffold、M1-2 material/section、M1-3a rigid platens/control nodes/rigid body、M1-3b boundary conditions、M1-4 contact、M1-5 step+loading、M1-6 output requests 均已完成。`pipeline/physical_builder.py` + `build-physical` CLI（含 `--outputs`）已用真实 Fig.1 mesh bundle 多次冒烟通过（`work/fig1_build_checkpoint_001`、`work/fig1_build_m13a_smoke_001`、`work/fig1_build_m13b_smoke_001`、`work/fig1_build_m14_smoke_001`、`work/fig1_build_m15_smoke_001`、`work/fig1_build_m16_smoke_002` 等），当前生成 `ingredients/` 与 7 个 blocks（`material_section.inc`、`rigid_platens.inc`、`boundary_conditions.inc`、`contact.inc`、`step_loading.inc`、`outputs.inc`、`step_end.inc`）+ `model_manifest.json`（`status=PHYSICAL_BUILD_PARTIAL`，`dataset_eligible=false`，无 physical.inp）。以上仅为 **Python builder + real Fig.1 mesh bundle smoke**；**Abaqus Physical Data Check 未执行、自动 solve 未执行**，不构成任何 Abaqus 验证。Pixi 下 81/81 测试通过。早期 checkpoint（环境迁移、Fig.1 网格回归、M1-1..M1-5 细节）见 git 历史与 IMPLEMENTATION_STATUS。以下 2026-09-13 接管核查记录保持原样。
+> **2026-09-15 development checkpoint（M1-1..M1-7）**：M1-1 scaffold、M1-2 material/section、M1-3a rigid platens/control nodes/rigid body、M1-3b boundary conditions、M1-4 contact、M1-5 step+loading、M1-6 output requests、M1-7 physical.inp assembly + repository static validation 均已完成，**M1 BUILD complete**。`pipeline/physical_builder.py` + `build-physical` CLI 现在生成 `ingredients/`、7 个 blocks、顶层 `physical.inp`（9 条固定顺序相对路径 `*Include`，原子发布）、`build_report.json`（13 项 static checks）与 `model_manifest.json`（`status=PHYSICAL_INP_STATIC_VALIDATED`，`dataset_eligible=false`）。Pixi 下 94/94 core + 8/8 boundary 测试通过；真实 Fig.1 smoke 见 `work/fig1_build_m17_smoke_001`（13/13 checks PASS）。以上仍仅为 **Python builder + 仓库级静态检查**：**Abaqus 未被调用**，Physical Data Check 未执行、自动 solve 未执行、ODB QA 未执行，不构成任何 Abaqus 验证。M2 Physical Data Check NOT STARTED。早期 checkpoint（环境迁移、Fig.1 网格回归、M1-1..M1-6 细节、2026-09-13 接管核查记录）见 git 历史与 IMPLEMENTATION_STATUS，以下 2026-09-13 接管核查记录保持原样。
 
 核查日期：2026-09-13。范围：工程接管、源资料核对、环境检查、原有轻量测试、现有 ODB 只读检查。未启动任何新 Abaqus Data Check、完整求解或批量计算。
 
-**当前完成的是“冻结的网格模块 + 自动化基础模块 + 一个真实完成到 20% 的手工压缩算例”。完整 30% 压缩验收、完整自动物理 INP writer、监控、恢复和批量主链尚未完成。**
+**当前完成的是"冻结的网格模块 + 自动化基础模块 + 完整自动物理 INP writer（仓库级静态验证）+ 一个真实完成到 20% 的手工压缩算例"。完整 30% 压缩验收、Physical Data Check、监控、恢复和批量主链尚未完成（2026-09-15 M1-7 checkpoint）。**
 
 ## 1. 最重要的新发现
 

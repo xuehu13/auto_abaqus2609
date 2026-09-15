@@ -1,11 +1,13 @@
-"""Physical build scaffold: reuse verified ingredients, own the manifest contract.
+"""Physical build: reuse verified ingredients, assemble physical.inp, validate statically.
 
 BUILD only proves what is assembled here. This stage validates input and
 numerics/outputs contracts, reuses the frozen prepare-fe ingredients, renders
-the material/section, rigid-platen, boundary-condition, contact and
-step/output blocks and records the model identity. The remaining writer steps
-are still explicitly NOT_IMPLEMENTED, so a successful build leaves no
-physical.inp and claims no Abaqus validation.
+the material/section, rigid-platen, boundary-condition, contact and step/output
+blocks (M1-2..M1-6), assembles them into a top-level physical.inp through a
+fixed include order (M1-7) and runs repository-owned static validation over the
+assembled artifacts. A PASS means internal self-consistency only: Abaqus
+keyword acceptance (Physical Data Check), solve and ODB QA are NOT performed or
+claimed, and dataset_eligible stays false.
 """
 from __future__ import annotations
 
@@ -586,22 +588,527 @@ def _render_outputs(outputs):
     return "\n".join(lines) + "\n"
 
 
+# ---------------------------------------------------------------------------
+# M1-7: physical.inp assembly and repository-owned static validation.
+#
+# The static validator understands ONLY the deterministic keyword forms this
+# repository itself generates (see the block renderers and prepare_fe). It is
+# deliberately not a general Abaqus INP parser, and a PASS never claims that
+# Abaqus accepted the deck: that judgement belongs to the M2 Physical Data
+# Check and later real-ODB QA milestones.
+# ---------------------------------------------------------------------------
+
+_STATIC_INCLUDE_ORDER = (
+    ("shell mesh (prepare-fe ingredient)", "ingredients/shell_mesh.inc"),
+    ("material/section block (M1-2)", "blocks/material_section.inc"),
+    ("rigid platens and control nodes (M1-3a)", "blocks/rigid_platens.inc"),
+    ("lateral PBC equations (prepare-fe ingredient)", "ingredients/lateral_pbc.inc"),
+    ("model-level boundary conditions (M1-3b)", "blocks/boundary_conditions.inc"),
+    ("general contact (M1-4)", "blocks/contact.inc"),
+    ("compression step and loading (M1-5)", "blocks/step_loading.inc"),
+    ("output requests (M1-6)", "blocks/outputs.inc"),
+    ("step close (M1-5)", "blocks/step_end.inc"),
+)
+
+_STATIC_ARTIFACTS = tuple(path for _, path in _STATIC_INCLUDE_ORDER) + (
+    "ingredients/pbc_map.json", "ingredients/model_inputs.json", "physical.inp")
+
+_MODEL_REGION_NODESETS = ("RP_X_CTRL", "RP_Y_CTRL", "RP_BOTTOM", "RP_TOP",
+                          "PLATE_BOTTOM_NODES", "PLATE_TOP_NODES")
+_MODEL_REGION_ELEMENTSETS = ("SHELL_ALL", "PLATE_BOTTOM", "PLATE_TOP")
+# Output-style keywords must sit strictly inside the compression step.
+_IN_STEP_OUTPUT_KEYWORDS = ("*restart", "*output", "*energy output",
+                            "*node output", "*element output")
+_BC_BLOCK_SOURCE = "blocks/boundary_conditions.inc"
+_STEP_LOADING_SOURCE = "blocks/step_loading.inc"
+_PBC_SOURCE = "ingredients/lateral_pbc.inc"
+_OUTPUTS_SOURCE = "blocks/outputs.inc"
+
+
 def _assemble_physical_inp(sections, output):
-    """Assemble rendered keyword blocks into the final physical.inp (atomic publish)."""
-    raise PipelineError("NOT_IMPLEMENTED", "Final INP assembly is not implemented yet.")
+    """Assemble the top-level physical.inp as fixed-order *Include references.
+
+    The deck stays a thin include graph over the deterministic artifacts; no
+    keyword content is duplicated here. Include paths are attempt-relative with
+    forward slashes (never absolute, never '..') and publication is atomic via
+    atomic_text. Returns the published file's SHA256.
+    """
+    lines = [
+        "** physical.inp assembled by physical-builder (M1-7).",
+        "** Repository static validation only: this deck proves that the",
+        "** deterministic blocks assembled here are internally self-consistent.",
+        "** It does NOT claim Abaqus keyword-parser acceptance (that is the M2",
+        "** Physical Data Check), solve success, ODB quality or dataset eligibility.",
+        "** Fixed assembly order: shell mesh -> material/section -> rigid platens ->",
+        "** lateral PBC -> model BCs -> contact -> step/loading -> outputs -> End Step.",
+    ]
+    lines.extend("*Include, input=" + path for _, path in sections)
+    atomic_text(output, "\n".join(lines) + "\n")
+    return file_hash(output)
+
+
+def _keyword_sections(text):
+    """Split generated keyword text into (keyword, params, data rows) sections.
+
+    Handles exactly the deterministic forms this repository writes: '*'-keyword
+    lines with comma-separated key=value parameters, '**' comments and plain
+    comma-separated data rows. This is not a general Abaqus INP parser.
+    """
+    sections = []
+    keyword, params, data = None, {}, []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("**"):
+            continue
+        if line.startswith("*"):
+            if keyword is not None:
+                sections.append((keyword, params, data))
+            parts = line.split(",")
+            keyword = parts[0].strip().lower()
+            params = {}
+            for part in parts[1:]:
+                if "=" in part:
+                    key, value = part.split("=", 1)
+                    params[key.strip().lower()] = value.strip()
+                elif part.strip():
+                    params[part.strip().lower()] = ""
+            data = []
+        elif keyword is not None:
+            data.append([part.strip() for part in line.split(",")])
+    if keyword is not None:
+        sections.append((keyword, params, data))
+    return sections
+
+
+def _parse_includes(text):
+    """Return the ordered *Include input paths of a top-level deck."""
+    return [params.get("input", "") for keyword, params, _data in _keyword_sections(text)
+            if keyword == "*include"]
+
+
+def _is_unsafe_include_path(target):
+    """Only attempt-relative forward-slash paths are allowed; anything else is unsafe."""
+    if not target or target != target.strip() or "\\" in target or ":" in target:
+        return True
+    if target.startswith(("/", "~")):
+        return True
+    parts = target.split("/")
+    return ".." in parts or "" in parts or "." in parts
+
+
+def _scan_static_model(folder, include_paths):
+    """Collect the assembled model's deterministic content for the static checks.
+
+    Node/element definitions keep every occurrence so duplicate labels stay
+    detectable by the checks; references are validated against the full
+    definition sets. The deck list preserves the flattened include order used by
+    the structural step checks.
+    """
+    folder = Path(folder)
+    nodes, elements, nsets, elsets = {}, {}, {}, {}
+    equations, boundaries, rigid_bodies, deck = [], [], [], []
+    for rel in include_paths:
+        text = (folder / rel).read_text(encoding="utf-8")
+        for keyword, params, data in _keyword_sections(text):
+            deck.append({"source": rel, "keyword": keyword, "params": params, "data": data})
+            if keyword == "*node":
+                for row in data:
+                    nodes.setdefault(int(row[0]), []).append(rel)
+            elif keyword == "*element":
+                for row in data:
+                    entry = {"elset": params.get("elset"),
+                             "conn": [int(value) for value in row[1:]], "source": rel}
+                    elements.setdefault(int(row[0]), []).append(entry)
+                    if entry["elset"]:
+                        elsets.setdefault(entry["elset"], []).append(int(row[0]))
+            elif keyword in ("*nset", "*elset"):
+                name = params.get("nset") or params.get("elset") or ""
+                labels = (nsets if keyword == "*nset" else elsets).setdefault(name, [])
+                if "generate" in params:
+                    start, end, step = (int(value) for value in data[0][:3])
+                    labels.extend(range(start, end + 1, step))
+                else:
+                    labels.extend(int(value) for row in data for value in row if value)
+            elif keyword == "*equation":
+                values = [value for row in data[1:] for value in row if value]
+                terms = [(int(values[i]), int(values[i + 1]), float(values[i + 2]))
+                         for i in range(0, len(values), 3)]
+                equations.append({"source": rel, "terms": terms})
+            elif keyword == "*boundary":
+                rows = [(row[0], int(row[1]), int(row[2]),
+                         float(row[3]) if len(row) > 3 and row[3] else None)
+                        for row in data if row and row[0]]
+                boundaries.append({"source": rel, "params": params, "rows": rows})
+            elif keyword == "*rigid body":
+                rigid_bodies.append({"source": rel, "params": params})
+    return {"nodes": nodes, "elements": elements, "nsets": nsets, "elsets": elsets,
+            "equations": equations, "boundaries": boundaries,
+            "rigid_bodies": rigid_bodies, "deck": deck}
 
 
 def _validate_static_model(folder, manifest):
-    """Static checks over an assembled model: includes, labels, sets and target consistency."""
-    raise PipelineError("NOT_IMPLEMENTED", "Static model validation is not implemented yet.")
+    """Run the repository-owned static checks over an assembled attempt.
+
+    Returns {check_name: {"status": "PASS"|"FAILED", ["details": ...]}}. The
+    checks cover artifact integrity, the include graph, node/element label
+    contracts, reference integrity, set/region existence, PBC reference
+    consistency, the boundary/loading contract, step structure, target and
+    time/amplitude consistency and output-region integrity. They deliberately
+    do NOT judge physics, convergence or Abaqus acceptance.
+    """
+    folder = Path(folder)
+    checks = {}
+
+    def record(name, problems):
+        checks[name] = {"status": "FAILED" if problems else "PASS"}
+        if problems:
+            checks[name]["details"] = list(problems)
+
+    # A. artifact integrity: every expected file exists and every manifest
+    # block SHA256 still matches the bytes on disk (tampering fails here).
+    problems = []
+    for rel in _STATIC_ARTIFACTS:
+        if not (folder / rel).is_file():
+            problems.append("missing artifact: " + rel)
+    for key, block in manifest["blocks"].items():
+        if key == "dir" or not isinstance(block, dict) or "path" not in block:
+            continue
+        path = folder / block["path"]
+        if path.is_file() and file_hash(path) != block["sha256"]:
+            problems.append("sha256 mismatch: " + block["path"])
+    record("artifact_integrity", problems)
+
+    # B. include graph of the top-level deck.
+    problems = []
+    inp = folder / "physical.inp"
+    includes = _parse_includes(inp.read_text(encoding="utf-8")) if inp.is_file() else []
+    expected_includes = [path for _, path in _STATIC_INCLUDE_ORDER]
+    if includes != expected_includes:
+        problems.append("include sequence mismatch, got: " + repr(includes))
+    if len(set(includes)) != len(includes):
+        problems.append("duplicate include entries")
+    for target in includes:
+        if _is_unsafe_include_path(target):
+            problems.append("unsafe include path: " + repr(target))
+        elif not (folder / target).is_file():
+            problems.append("include target missing: " + target)
+    record("include_graph", problems)
+
+    try:
+        # Follow the deck's actual include order whenever every target is safe
+        # and present, so structural checks see the real assembled model; fall
+        # back to the canonical order for missing/unsafe decks.
+        if includes and all(not _is_unsafe_include_path(target)
+                            and (folder / target).is_file() for target in includes):
+            scan_order = includes
+        else:
+            scan_order = expected_includes
+        model = _scan_static_model(folder, scan_order)
+    except (OSError, ValueError, IndexError) as exc:
+        model = None
+        scan_error = "model scan failed: %s: %s" % (type(exc).__name__, exc)
+    if model is None:
+        for name in ("label_uniqueness", "node_reference_integrity",
+                     "element_reference_integrity", "region_integrity",
+                     "pbc_reference_integrity", "boundary_contract",
+                     "step_pairing", "step_order", "target_consistency",
+                     "time_amplitude_consistency", "output_region_integrity"):
+            record(name, [scan_error])
+        return checks
+
+    # C/D. node and element label contracts.
+    problems = []
+    for kind, mapping in (("node", model["nodes"]), ("element", model["elements"])):
+        duplicates = sorted(label for label, sources in mapping.items() if len(sources) > 1)
+        if duplicates:
+            problems.append("duplicate %s labels: %s" % (kind, duplicates[:10]))
+    rp = {key: int(manifest["labels"][key])
+          for key in ("rp_x", "rp_y", "rp_bottom", "rp_top")}
+    shell_nodes, shell_elements = int(manifest["shell_nodes"]), int(manifest["shell_elements"])
+    if len(set(rp.values())) != len(rp):
+        problems.append("control/reference node labels are not distinct")
+    if any(value <= shell_nodes for value in rp.values()):
+        problems.append("a control/reference label collides with the shell node range")
+    plate = manifest["blocks"]["rigid_platens"]
+    bottom_nodes, top_nodes = plate["node_ranges"]["bottom"], plate["node_ranges"]["top"]
+    bottom_elements, top_elements = plate["element_ranges"]["bottom"], plate["element_ranges"]["top"]
+    if not (shell_nodes < bottom_nodes[0] <= bottom_nodes[1] < top_nodes[0] <= top_nodes[1]):
+        problems.append("rigid platen node ranges overlap the shell nodes or each other")
+    if not (shell_elements < bottom_elements[0] <= bottom_elements[1]
+            < top_elements[0] <= top_elements[1]):
+        problems.append("rigid platen element ranges overlap the shell elements or each other")
+    if any(bottom_nodes[0] <= value <= top_nodes[1] for value in rp.values()):
+        problems.append("a control/reference label falls inside the platen node ranges")
+    record("label_uniqueness", problems)
+
+    # E. node reference integrity: sets, equations and rigid bodies.
+    problems = []
+    defined_nodes = set(model["nodes"])
+    for name, members in model["nsets"].items():
+        missing = sorted(set(members) - defined_nodes)
+        if missing:
+            problems.append("nset %s references undefined nodes: %s" % (name, missing[:10]))
+    for equation in model["equations"]:
+        missing = sorted({node for node, _dof, _coef in equation["terms"]} - defined_nodes)
+        if missing:
+            problems.append("an equation references undefined nodes: %s" % missing[:10])
+    for body in model["rigid_bodies"]:
+        ref = body["params"].get("ref node")
+        if ref is None or not ref.isdigit() or int(ref) not in defined_nodes:
+            problems.append("rigid body reference node missing or undefined: " + repr(ref))
+    record("node_reference_integrity", problems)
+
+    # F. element reference integrity: connectivity and element sets.
+    problems = []
+    defined_elements = set(model["elements"])
+    for label, entries in model["elements"].items():
+        if any(set(entry["conn"]) - defined_nodes for entry in entries):
+            problems.append("element %d references an undefined node" % label)
+    for name, members in model["elsets"].items():
+        missing = sorted(set(members) - defined_elements)
+        if missing:
+            problems.append("elset %s references undefined elements: %s" % (name, missing[:10]))
+    record("element_reference_integrity", problems)
+
+    # G. region existence for the assembled model.
+    problems = []
+    for name in _MODEL_REGION_NODESETS + tuple(manifest["blocks"]["outputs"]["required_regions"]):
+        if not model["nsets"].get(name):
+            problems.append("required node set missing or empty: " + name)
+    for name in _MODEL_REGION_ELEMENTSETS:
+        if not model["elsets"].get(name):
+            problems.append("required element set missing or empty: " + name)
+    record("region_integrity", problems)
+
+    # H. PBC reference consistency (final referencing only; no re-derivation).
+    problems = []
+    pbc_map = read_json(folder / "ingredients/pbc_map.json")
+    if pbc_map.get("equation_count") != manifest["equation_count"]:
+        problems.append("pbc_map equation_count does not match the manifest")
+    if pbc_map.get("independent_relations") != len(pbc_map.get("relations", [])):
+        problems.append("pbc_map independent_relations does not match its relations list")
+    if pbc_map.get("mode") != "lateral_xy_diagonal":
+        problems.append("unexpected PBC mode: " + repr(pbc_map.get("mode")))
+    pbc_text = (folder / _PBC_SOURCE).read_text(encoding="utf-8").lower()
+    if "rp_z" in manifest["labels"] or "rp_z" in pbc_text:
+        problems.append("hidden Z macro control found; lateral XY PBC only")
+    lateral_equations = [e for e in model["equations"] if e["source"] == _PBC_SOURCE]
+    if len(lateral_equations) != pbc_map.get("equation_count"):
+        problems.append("rendered equation count does not match pbc_map")
+    macro_dofs = {rp["rp_x"]: 1, rp["rp_y"]: 2}
+    for equation in lateral_equations:
+        for node, dof, _coef in equation["terms"]:
+            if node in macro_dofs and dof != macro_dofs[node]:
+                problems.append("macro control DOF misuse on node %d" % node)
+    dependent = {int(row["node"]) + 1 for row in pbc_map.get("relations", [])}
+    referenced = {node for equation in lateral_equations
+                  for node, _dof, _coef in equation["terms"]}
+    if not dependent <= referenced:
+        problems.append("dependent PBC nodes missing from the rendered equations")
+    record("pbc_reference_integrity", problems)
+
+    # I. boundary / loading contract.
+    problems = []
+    step_block = manifest["blocks"]["step_loading"]
+    model_dofs = {}
+    for boundary in model["boundaries"]:
+        if boundary["source"] != _BC_BLOCK_SOURCE:
+            continue
+        for nset, dof1, dof2, _mag in boundary["rows"]:
+            model_dofs.setdefault(nset, set()).update(range(dof1, dof2 + 1))
+    if model_dofs.get("RP_BOTTOM") != {1, 2, 3, 4, 5, 6}:
+        problems.append("RP_BOTTOM model-level DOFs are not exactly 1-6: "
+                        + repr(sorted(model_dofs.get("RP_BOTTOM", ()))))
+    if model_dofs.get("RP_TOP") != {1, 2, 4, 5, 6}:
+        problems.append("RP_TOP model-level guide DOFs are not exactly 1,2,4,5,6 "
+                        "(DOF3 must stay free for the step loading): "
+                        + repr(sorted(model_dofs.get("RP_TOP", ()))))
+    extra = set(model_dofs) - {"RP_BOTTOM", "RP_TOP"}
+    if extra:
+        problems.append("unexpected model-level boundary sets: " + repr(sorted(extra)))
+    for boundary in model["boundaries"]:
+        for nset, _dof1, _dof2, _mag in boundary["rows"]:
+            if nset in ("RP_X_CTRL", "RP_Y_CTRL"):
+                problems.append("macro control node constrained in %s: %s"
+                                % (boundary["source"], nset))
+    step_boundaries = [b for b in model["boundaries"] if b["source"] == _STEP_LOADING_SOURCE]
+    if len(step_boundaries) != 1 or step_boundaries[0]["params"].get("amplitude") != "AMP_COMPRESSION":
+        problems.append("the compression step needs exactly one *Boundary with "
+                        "amplitude=AMP_COMPRESSION")
+    else:
+        rows = step_boundaries[0]["rows"]
+        expected_row = (step_block["loading_set"], step_block["loading_dof"],
+                        step_block["loading_dof"])
+        if len(rows) != 1 or (rows[0][0], rows[0][1], rows[0][2]) != expected_row:
+            problems.append("step loading must be exactly RP_TOP DOF3: " + repr(rows))
+        elif rows[0][3] is None or float(rows[0][3]) != float(step_block["target_displacement_mm"]):
+            problems.append("step U3 magnitude does not match the manifest target")
+    record("boundary_contract", problems)
+
+    # J. step pairing and K. step/order structure.
+    problems = []
+    deck = model["deck"]
+    step_count = sum(1 for entry in deck if entry["keyword"] == "*step")
+    end_count = sum(1 for entry in deck if entry["keyword"] == "*end step")
+    if step_count != 1:
+        problems.append("expected exactly one *Step, found %d" % step_count)
+    if end_count != 1:
+        problems.append("expected exactly one *End Step, found %d" % end_count)
+    record("step_pairing", problems)
+
+    problems = []
+    step_idx = next((i for i, entry in enumerate(deck) if entry["keyword"] == "*step"), None)
+    end_idx = next((i for i, entry in enumerate(deck) if entry["keyword"] == "*end step"), None)
+    if step_idx is not None and end_idx is not None and step_idx < end_idx:
+        for i, entry in enumerate(deck):
+            keyword = entry["keyword"]
+            if keyword in _IN_STEP_OUTPUT_KEYWORDS and not (step_idx < i < end_idx):
+                problems.append("%s in %s is not inside the step" % (keyword, entry["source"]))
+            elif keyword == "*dynamic" and not (step_idx < i < end_idx):
+                problems.append("*Dynamic is not inside the step")
+            elif keyword == "*amplitude" and not (i < step_idx):
+                problems.append("*Amplitude must precede the step open")
+            elif keyword == "*boundary":
+                inside = step_idx < i < end_idx
+                if "amplitude" in entry["params"] and not inside:
+                    problems.append("the amplitude-driven step boundary is not inside the step")
+                if "amplitude" not in entry["params"] and inside:
+                    problems.append("a model-level boundary appears inside the step")
+    else:
+        problems.append("step open/close not comparable for ordering")
+    record("step_order", problems)
+
+
+    # L. target consistency (validator only checks; it never recomputes/overwrites).
+    problems = []
+    strain = float(manifest["physics"]["target_compression_strain"])
+    expected_target = -strain * float(manifest["L_mm"])
+    target = float(manifest["target_displacement_mm"])
+    if not math.isclose(expected_target, target, rel_tol=1e-12, abs_tol=0.0):
+        problems.append("target_displacement_mm %r != -strain * L_mm %r"
+                        % (target, expected_target))
+    if float(step_block["target_displacement_mm"]) != target:
+        problems.append("step_loading manifest target differs from the model target")
+    record("target_consistency", problems)
+
+    # M. time / amplitude consistency.
+    problems = []
+    period = float(manifest["physics"]["time_period_s"])
+    amplitudes = [entry for entry in deck if entry["keyword"] == "*amplitude"
+                  and entry["source"] == _STEP_LOADING_SOURCE]
+    dynamics = [entry for entry in deck if entry["keyword"] == "*dynamic"]
+    if len(amplitudes) != 1 or len(amplitudes[0]["data"]) != 1 or len(amplitudes[0]["data"][0]) != 4:
+        problems.append("the compression amplitude definition is missing or malformed")
+    else:
+        start_time, start_value, end_time, end_value = (
+            float(value) for value in amplitudes[0]["data"][0])
+        if (start_time, start_value) != (0.0, 0.0) or end_value != 1.0:
+            problems.append("the smooth step amplitude must span 0 -> 1")
+        if end_time != period:
+            problems.append("amplitude endpoint %r != time_period_s %r" % (end_time, period))
+    if len(dynamics) != 1 or len(dynamics[0]["data"]) != 1 or len(dynamics[0]["data"][0]) != 4:
+        problems.append("the *Dynamic time increments line is missing or malformed")
+    else:
+        total = float(dynamics[0]["data"][0][1])
+        if total != period:
+            problems.append("*Dynamic total step time %r != time_period_s %r" % (total, period))
+    if ([float(step_block["amplitude_end"][0]), float(step_block["amplitude_end"][1])]
+            != [period, 1.0]) or float(step_block["time_period_s"]) != period:
+        problems.append("manifest step_loading time/amplitude metadata is inconsistent")
+    record("time_amplitude_consistency", problems)
+
+    # N. output region integrity (existence only; variable semantics is M2+).
+    problems = []
+    rendered_regions = [entry["params"].get("nset") for entry in deck
+                        if entry["keyword"] == "*node output"
+                        and entry["source"] == _OUTPUTS_SOURCE]
+    required_regions = list(manifest["blocks"]["outputs"]["required_regions"])
+    if rendered_regions != required_regions:
+        problems.append("rendered node output regions %r != manifest required_regions %r"
+                        % (rendered_regions, required_regions))
+    defined_nsets = set(model["nsets"])
+    for name in required_regions:
+        if name not in defined_nsets:
+            problems.append("output region not defined in the assembled model: " + name)
+    record("output_region_integrity", problems)
+
+    return checks
+
+
+
+def _run_static_stage(folder, manifest):
+    """Assemble physical.inp, validate statically and publish the build evidence.
+
+    On success the build_report.json records PASS with every later Abaqus stage
+    as NOT_RUN, and the manifest is finalized as PHYSICAL_INP_STATIC_VALIDATED
+    with dataset_eligible=false. On failure the attempt keeps all artifacts, a
+    failing build_report.json names the failed checks, the manifest is written
+    with a failed status (never a success claim) and STATIC_VALIDATION_FAILED
+    is raised.
+    """
+    folder = Path(folder)
+    inp_sha = _assemble_physical_inp(_STATIC_INCLUDE_ORDER, folder / "physical.inp")
+    checks = _validate_static_model(folder, manifest)
+    includes = [{"path": path, "sha256": (file_hash(folder / path)
+                                          if (folder / path).is_file() else None)}
+                for _, path in _STATIC_INCLUDE_ORDER]
+    failed = sorted(name for name, result in checks.items() if result["status"] != "PASS")
+    report = {
+        "schema_version": 1,
+        "builder": _BUILDER_ID,
+        "model_key": manifest["identity"]["model_key"],
+        "scaffold_key": manifest["scaffold_key"],
+        "build_key": manifest["build_key"],
+        "physical_inp": {"path": "physical.inp", "sha256": inp_sha},
+        "includes": includes,
+        "static_checks": checks,
+        "static_validation": "FAILED" if failed else "PASS",
+        "abaqus_datacheck": "NOT_RUN",
+        "solve": "NOT_RUN",
+        "odb_qa": "NOT_RUN",
+        "dataset_eligible": False,
+        "warning": "Static validation PASS is repository-level internal consistency only: "
+                   "it does NOT mean the Abaqus keyword parser accepted the deck, and no "
+                   "Physical Data Check, solve, ODB QA or dataset eligibility is claimed.",
+    }
+    if failed:
+        report["status"] = "STATIC_VALIDATION_FAILED"
+        report["failed_checks"] = failed
+        atomic_json(folder / "build_report.json", report)
+        atomic_json(folder / "model_manifest.json", dict(
+            manifest, status="PHYSICAL_INP_STATIC_VALIDATION_FAILED",
+            dataset_eligible=False, physical_inp=report["physical_inp"],
+            warning="Static validation failed; the attempt is retained as evidence and no "
+                    "successful build is claimed."))
+        raise PipelineError("STATIC_VALIDATION_FAILED",
+                            "Static validation failed checks: " + ", ".join(failed))
+    report["status"] = "STATIC_VALIDATION_PASSED"
+    atomic_json(folder / "build_report.json", report)
+    final = dict(
+        manifest,
+        status="PHYSICAL_INP_STATIC_VALIDATED",
+        implemented_stages=list(manifest["implemented_stages"]) + [
+            "physical.inp assembly", "static model validation"],
+        missing_stages=["physical datacheck", "solve", "ODB QA"],
+        physical_inp=report["physical_inp"],
+        build_report={"path": "build_report.json",
+                      "sha256": file_hash(folder / "build_report.json")},
+        dataset_eligible=False,
+        warning="physical.inp passed repository static validation only. Abaqus Physical "
+                "Data Check, solve, ODB QA and dataset eligibility are NOT validated and "
+                "remain future milestones (quasi_static_status stays pending_qa).")
+    atomic_json(folder / "model_manifest.json", final)
+    return final
+
 
 
 def build(npz, report, pairs, physics_path, material_path, numerics_path, outputs_path, output):
-    """Validate contracts, reuse prepare-fe ingredients and write the partial build manifest.
+    """Validate contracts, reuse prepare-fe ingredients and assemble physical.inp.
 
     Input and numerics errors are raised before the attempt directory is created,
     so simple mistakes leave no empty attempts. Failures inside the real
-    ingredient preparation keep the attempt as evidence.
+    ingredient preparation or the M1-7 static validation keep the attempt as
+    evidence (see _run_static_stage).
     """
     _require_inputs((npz, report, pairs, physics_path, material_path, numerics_path, outputs_path))
     numerics = _load_numerics(numerics_path)
@@ -641,7 +1148,6 @@ def build(npz, report, pairs, physics_path, material_path, numerics_path, output
                            "numerics_sha256": file_hash(numerics_path), "builder": _BUILDER_ID})
     manifest = {
         "schema_version": 1,
-        "status": "PHYSICAL_BUILD_PARTIAL",
         "builder": _BUILDER_ID,
         "scaffold_key": scaffold_key,
         "build_key": digest({"scaffold_key": scaffold_key, "builder": _BUILDER_ID,
@@ -773,8 +1279,5 @@ def build(npz, report, pairs, physics_path, material_path, numerics_path, output
         "missing_stages": ["physical.inp assembly", "static model validation",
                            "physical datacheck", "solve", "ODB QA"],
         "dataset_eligible": False,
-        "warning": "Partial physical build: keyword blocks are rendered but no physical.inp is "
-                   "assembled and no Abaqus validation was performed.",
     }
-    atomic_json(folder / "model_manifest.json", manifest)
-    return manifest
+    return _run_static_stage(folder, manifest)
