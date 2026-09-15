@@ -22,7 +22,7 @@ pixi run build-cgal --check-only        # 编译工具链检查；实际构建�
 
 每次输出必须使用新的 `work/<attempt>` 目录，拒绝覆盖。
 
-当前 `build-physical` 生成 partial 物理 blocks：`blocks/material_section.inc`、`blocks/rigid_platens.inc`、`blocks/boundary_conditions.inc`、`blocks/contact.inc` 与 `model_manifest.json`。仍不生成完整 `physical.inp`，也没有 Abaqus Physical Data Check，不是 production-ready。
+当前 `build-physical` 生成 partial 物理 blocks：`blocks/material_section.inc`、`blocks/rigid_platens.inc`、`blocks/boundary_conditions.inc`、`blocks/contact.inc`、`blocks/step_loading.inc`、`blocks/step_end.inc` 与 `model_manifest.json`。outputs 尚未实现（无 outputs.inc）；仍不生成完整 `physical.inp`，也没有 Abaqus Physical Data Check，不是 production-ready。
 
 ## 目录结构
 

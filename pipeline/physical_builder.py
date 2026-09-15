@@ -22,7 +22,10 @@ _MATERIAL_BLOCK = "material_section.inc"
 _RIGID_BLOCK = "rigid_platens.inc"
 _BC_BLOCK = "boundary_conditions.inc"
 _CONTACT_BLOCK = "contact.inc"
+_STEP_LOADING_BLOCK = "step_loading.inc"
+_STEP_END_BLOCK = "step_end.inc"
 _NUMERICS_REQUIRED = ("schema_version", "procedure", "application", "nlgeom",
+                      "initial_acceleration_policy",
                       "initial_increment_s", "minimum_increment_s", "maximum_increment_s",
                       "maximum_increments", "automatic_stabilization", "cpus_per_job")
 
@@ -49,6 +52,17 @@ def _load_numerics(path):
                             "finite-strain compression contract.")
     if not isinstance(numerics["automatic_stabilization"], bool):
         raise PipelineError("CONFIG_INVALID", "automatic_stabilization must be a boolean.")
+    if numerics["automatic_stabilization"]:
+        raise PipelineError("NOT_IMPLEMENTED",
+                            "automatic_stabilization=true is valid Abaqus usage but no stabilization "
+                            "keyword rendering has been validated in this writer.")
+    if not isinstance(numerics["initial_acceleration_policy"], str):
+        raise PipelineError("CONFIG_INVALID", "initial_acceleration_policy must be a string.")
+    if numerics["initial_acceleration_policy"] != "bypass":
+        raise PipelineError("NOT_IMPLEMENTED",
+                            "Initial acceleration policy " + repr(numerics["initial_acceleration_policy"])
+                            + " is valid Abaqus usage but this writer only supports bypass (initial=NO), "
+                            "matching the hand baseline policy.")
     increments = (numerics["initial_increment_s"], numerics["minimum_increment_s"],
                   numerics["maximum_increment_s"])
     if (not all(isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 for v in increments)
@@ -189,10 +203,10 @@ def _render_rigid_platens(physics, manifest):
     Semantics baseline: the validated hand model Fig1_Compression.inp instances
     one RigidPlate part twice with translation only, so bottom and top share the
     same deterministic local connectivity and both carry +Z element normals
-    (normal_policy=baseline_shared_connectivity_plus_z_both, pending contact-side
-    validation at M1-4). rp_x/rp_y are PBC macro control nodes and belong to no
-    rigid body. No Boundary/Surface/Contact/Step/Loading/Output keywords are
-    emitted here.
+    (normal_policy=baseline_shared_connectivity_plus_z_both, contact
+    initialization validation deferred to the M2 physical data check). rp_x/rp_y
+    are PBC macro control nodes and belong to no rigid body. No
+    Boundary/Surface/Contact/Step/Loading/Output keywords are emitted here.
     """
     plan = _platen_plan(physics, manifest)
     n, per = plan["intervals"], plan["per_side_nodes"]
@@ -223,7 +237,8 @@ def _render_rigid_platens(physics, manifest):
         "** Rigid platens and control/reference nodes rendered by physical-builder (M1-3a).",
         "** Semantics baseline: hand model Fig1_Compression.inp instances one RigidPlate part",
         "** twice with translation only, so bottom and top share the same local connectivity",
-        "** and both carry +Z element normals; contact-side validation is deferred to M1-4.",
+        "** and both carry +Z element normals; contact initialization validation is deferred",
+        "** to the M2 physical data check.",
         "** RP_X_CTRL/RP_Y_CTRL are PBC macro control nodes and belong to no rigid body.",
         "*Node",
     ]
@@ -367,8 +382,47 @@ def _render_contact(physics, manifest):
 
 
 def _render_step_and_loading(physics, numerics, manifest):
-    """Dynamic implicit step, smooth step amplitude and the target displacement load."""
-    raise PipelineError("NOT_IMPLEMENTED", "Step/loading rendering is not implemented yet.")
+    """Render the compression step opening, its smooth-step amplitude and the
+    RP_TOP U3 displacement loading.
+
+    Baseline: hand model *Amplitude SMOOTH STEP + *Step Compression + *Dynamic
+    MODERATE DISSIPATION with bypassed initial acceleration calculation. The
+    amplitude endpoint equals the current step time period, so the relative
+    amplitude 0 -> 1 spans the whole step for any time_period_s. Only the
+    loading DOF (RP_TOP U3) is prescribed in-step; the zero-valued guide DOFs
+    from the boundary block stay active under the default OP=MOD history
+    semantics. The target displacement is the prepare_fe-verified manifest
+    value and is never recomputed here. No Restart/Output/End Step keywords
+    are emitted (outputs.inc and step_end.inc are separate blocks).
+    """
+    if physics.get("amplitude") != "smooth_step":
+        raise PipelineError("NOT_IMPLEMENTED",
+                            "Amplitude type " + repr(physics.get("amplitude")) + " is valid Abaqus "
+                            "usage but this writer only supports the smooth-step profile spanning "
+                            "the entire current step.")
+    period = physics.get("time_period_s")
+    if not isinstance(period, (int, float)) or isinstance(period, bool) \
+            or not math.isfinite(period) or period <= 0:
+        raise PipelineError("CONFIG_INVALID", "physics.time_period_s must be a positive finite number.")
+    target_u3 = manifest["target_displacement_mm"]
+    subheading = "Compression: eps=%.6g, U3=%.6g mm, T=%.6g s" % (
+        physics["target_compression_strain"], target_u3, period)
+    return "\n".join([
+        "*Amplitude, name=AMP_COMPRESSION, definition=SMOOTH STEP",
+        "0.0, 0.0, " + _fmt(period) + ", 1.0",
+        "*Step, name=Compression, nlgeom=YES, inc=%d" % numerics["maximum_increments"],
+        subheading,
+        "*Dynamic, application=MODERATE DISSIPATION, initial=NO",
+        "%s, %s, %s, %s" % (_fmt(numerics["initial_increment_s"]), _fmt(period),
+                            _fmt(numerics["minimum_increment_s"]), _fmt(numerics["maximum_increment_s"])),
+        "*Boundary, amplitude=AMP_COMPRESSION",
+        "RP_TOP, 3, 3, " + _fmt(target_u3),
+    ]) + "\n"
+
+
+def _render_step_end():
+    """Render the step closing keyword; the future outputs block is placed before it."""
+    return "*End Step\n"
 
 
 def _render_outputs(physics, manifest):
@@ -410,6 +464,11 @@ def build(npz, report, pairs, physics_path, material_path, numerics_path, output
     bc_block_sha = file_hash(blocks_dir / _BC_BLOCK)
     atomic_text(blocks_dir / _CONTACT_BLOCK, _render_contact(model_inputs["physics"], model_inputs))
     contact_block_sha = file_hash(blocks_dir / _CONTACT_BLOCK)
+    atomic_text(blocks_dir / _STEP_LOADING_BLOCK,
+                _render_step_and_loading(model_inputs["physics"], numerics, model_inputs))
+    step_loading_sha = file_hash(blocks_dir / _STEP_LOADING_BLOCK)
+    atomic_text(blocks_dir / _STEP_END_BLOCK, _render_step_end())
+    step_end_sha = file_hash(blocks_dir / _STEP_END_BLOCK)
     scaffold_key = digest({"model_key": model_inputs["model_key"], "numerics": numerics,
                            "numerics_sha256": file_hash(numerics_path), "builder": _BUILDER_ID})
     manifest = {
@@ -421,7 +480,9 @@ def build(npz, report, pairs, physics_path, material_path, numerics_path, output
                              "blocks": {"material_section": material_block_sha,
                                         "rigid_platens": rigid_block_sha,
                                         "boundary_conditions": bc_block_sha,
-                                        "contact": contact_block_sha}}),
+                                        "contact": contact_block_sha,
+                                        "step_loading": step_loading_sha,
+                                        "step_end": step_end_sha}}),
         "identity": {"model_key": model_inputs["model_key"],
                      "physics_profile_id": model_inputs["physics"].get("profile_id"),
                      "material_id": model_inputs["material"].get("material_id"),
@@ -489,14 +550,41 @@ def build(npz, report, pairs, physics_path, material_path, numerics_path, output
                 "explicit_surfaces": False,
                 "explicit_contact_initialization": False,
                 "initialization_policy": "abaqus_standard_default_pending_datacheck",
-                "source_policy": "hand_baseline_all_exterior_general_contact"}},
+                "source_policy": "hand_baseline_all_exterior_general_contact"},
+            "step_loading": {
+                "path": "blocks/" + _STEP_LOADING_BLOCK, "sha256": step_loading_sha,
+                "step_name": "Compression",
+                "procedure": numerics["procedure"],
+                "application": numerics["application"],
+                "nlgeom": numerics["nlgeom"],
+                "maximum_increments": numerics["maximum_increments"],
+                "initial_acceleration_policy": numerics["initial_acceleration_policy"],
+                "initial_increment_s": numerics["initial_increment_s"],
+                "minimum_increment_s": numerics["minimum_increment_s"],
+                "maximum_increment_s": numerics["maximum_increment_s"],
+                "time_period_s": model_inputs["physics"]["time_period_s"],
+                "amplitude_name": "AMP_COMPRESSION",
+                "amplitude_type": "smooth_step",
+                "amplitude_time_span": "step",
+                "amplitude_start": [0.0, 0.0],
+                "amplitude_end": [model_inputs["physics"]["time_period_s"], 1.0],
+                "loading_set": "RP_TOP",
+                "loading_dof": 3,
+                "target_displacement_mm": model_inputs["target_displacement_mm"],
+                "target_compression_strain": model_inputs["physics"]["target_compression_strain"],
+                "step_reapplies_guide_dofs": False,
+                "quasi_static_status": "pending_qa"},
+            "step_end": {
+                "path": "blocks/" + _STEP_END_BLOCK, "sha256": step_end_sha,
+                "keyword": "*End Step"}},
         "implemented_stages": ["input contract checks", "numerics contract checks",
                                "ingredient reuse from prepare-fe", "model manifest",
                                "material/section block rendering",
                                "rigid platens/reference points block rendering",
                                "boundary conditions block rendering",
-                               "contact block rendering"],
-        "missing_stages": ["step and loading", "output requests",
+                               "contact block rendering",
+                               "step and loading block rendering"],
+        "missing_stages": ["output requests",
                            "physical.inp assembly", "static model validation", "physical datacheck",
                            "solve", "ODB QA"],
         "dataset_eligible": False,

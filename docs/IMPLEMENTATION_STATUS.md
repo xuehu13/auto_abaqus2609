@@ -37,8 +37,15 @@
 - `normal_policy_status` 演进为 `baseline_contact_definition_reproduced_pending_datacheck`（writer 已复现 baseline 接触定义，真实初始化待 M2 Abaqus Data Check；不声称 contact validated）。
 - `status=PHYSICAL_BUILD_PARTIAL`；`dataset_eligible=false`；无 physical.inp；无 Abaqus 验证；`build_key` 已包含四个 block SHA。
 
-### M1-5 未开始：Step + Loading
-- 待办：`*Step/*Dynamic/*Amplitude` 与 RP_TOP U3 非零加载（数值必须 config 驱动，禁止硬编码 20%/30%）；Step 描述必须由实际参数生成；OP=MOD 语义下 guide DOF 是否重申由该阶段基于手工证据决定。
+### M1-5 已完成：Step + Loading
+- `blocks/step_loading.inc`：`*Amplitude, name=AMP_COMPRESSION, definition=SMOOTH STEP`（数据 `(0,0,T,1)`，T=physics.time_period_s，相对幅值 0→1 跨整个步程）+ `*Step, name=Compression, nlgeom=YES, inc=<maximum_increments>` + 事实性 subheading（不含 quasi-static 声明）+ `*Dynamic, application=MODERATE DISSIPATION, initial=NO`（INITIAL=NO 经 numerics policy `initial_acceleration_policy="bypass"` 表达）+ in-step loading 仅 `RP_TOP, 3, 3, <target_displacement_mm>`（单一真值继承自 manifest，不重算；OP=MOD 下 model 级 guide 持续有效，不重申 guide DOFs）。
+- `blocks/step_end.inc`：`*End Step`（所有权归 M1-5，M1-7 仅按序拼接）。
+- `automatic_stabilization=true` → NOT_IMPLEMENTED（attempt 创建前失败）；amplitude 非 smooth_step → NOT_IMPLEMENTED。
+- `quasi_static_status=pending_qa`：Dynamic Implicit + Smooth Step 不构成准静态证明，判定留给 QA（ALLKE/ALLIE、曲线振荡、能量平衡）。
+- `status=PHYSICAL_BUILD_PARTIAL`；`dataset_eligible=false`；无 outputs.inc；无 physical.inp；无 Abaqus 验证；`build_key` 已包含六个 block SHA。
+
+### M1-6 未开始：Output Requests
+- 待办：建立独立 `config/outputs.example.json`（field/history 变量与频率全部 config 驱动，Fig.1 输出只是 baseline profile）；生成 `blocks/outputs.inc`（含 `*Restart, write, frequency=0`），按架构插入 step_loading 与 step_end 之间；`FREQUENCY=n` 语义 = 每 n 个 increments 输出一次，不是“生成 n 帧”。
 
 ## 已实现且经过本地逻辑验证
 

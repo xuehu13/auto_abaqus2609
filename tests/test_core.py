@@ -13,8 +13,9 @@ from pipeline.diagnostics import classify_messages, completion_evidence, stagnat
 from pipeline.mesh_contract import load_bundle
 from pipeline.mesher_adapter import prepare
 from pipeline.pbc import relations, render_include
-from pipeline.physical_builder import (_platen_plan, _render_boundary_conditions,
+from pipeline.physical_builder import (_load_numerics, _platen_plan, _render_boundary_conditions,
                                        _render_contact, _render_material_section,
+                                       _render_step_and_loading, _render_step_end,
                                        build as build_physical)
 from pipeline.prepare_fe import prepare as prepare_fe
 from pipeline.state import StateStore
@@ -667,6 +668,178 @@ class PhysicalBuilderTests(unittest.TestCase):
         with self.assertRaises(PipelineError) as caught:
             _render_contact(nan_physics, manifest)
         self.assertEqual(caught.exception.code, "CONFIG_INVALID")
+
+    def _parse_step_sections(self, block):
+        sections, current = [], None
+        for line in block.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("**"):
+                continue
+            if stripped.startswith("*"):
+                current = {"keyword": stripped, "data": []}
+                sections.append(current)
+                continue
+            if current is not None:
+                current["data"].append([p.strip() for p in stripped.split(",")])
+        return sections
+
+    def test_step_loading_content(self):
+        manifest = self.build()
+        block = (Path(self.td.name) / "build/blocks/step_loading.inc").read_text()
+        lines = block.splitlines()
+        sections = self._parse_step_sections(block)
+        self.assertEqual([s["keyword"] for s in sections],
+                         ["*Amplitude, name=AMP_COMPRESSION, definition=SMOOTH STEP",
+                          "*Step, name=Compression, nlgeom=YES, inc=10000",
+                          "*Dynamic, application=MODERATE DISSIPATION, initial=NO",
+                          "*Boundary, amplitude=AMP_COMPRESSION"])
+        amplitude, step, dynamic, boundary = sections
+        self.assertEqual(amplitude["data"], [["0.0", "0.0", "1.0", "1.0"]])
+        step_idx = lines.index("*Step, name=Compression, nlgeom=YES, inc=10000")
+        subheading = lines[step_idx + 1]
+        self.assertEqual(len(step["data"]), 1)
+        self.assertEqual(step["data"][0][0], "Compression: eps=0.3")
+        self.assertFalse(subheading.startswith("**"))
+        self.assertNotIn("quasi-static", subheading.lower())
+        self.assertIn("eps=0.3", subheading)
+        self.assertIn("U3=-0.3", subheading)
+        self.assertIn("T=1", subheading)
+        self.assertEqual(dynamic["data"], [["0.001", "1.0", "1e-08", "0.02"]])
+        self.assertEqual(boundary["data"], [["RP_TOP", "3", "3", "-0.3"]])
+        self.assertEqual(manifest["blocks"]["step_loading"]["target_displacement_mm"], -0.3)
+        self.assertIs(manifest["blocks"]["step_loading"]["step_reapplies_guide_dofs"], False)
+
+    def test_step_end_block(self):
+        manifest = self.build()
+        block = (Path(self.td.name) / "build/blocks/step_end.inc").read_text()
+        self.assertEqual(block, "*End Step\n")
+        self.assertEqual(manifest["blocks"]["step_end"]["keyword"], "*End Step")
+        self.assertEqual(manifest["blocks"]["step_end"]["sha256"],
+                         file_hash(Path(self.td.name) / "build/blocks/step_end.inc"))
+
+    def test_step_scope_guard(self):
+        self.build()
+        loading = (Path(self.td.name) / "build/blocks/step_loading.inc").read_text().lower()
+        for token in ("*restart", "*output", "*end step", "*contact", "*surface",
+                      "*cload", "*dload", "*dsload"):
+            self.assertNotIn(token, loading)
+        end = (Path(self.td.name) / "build/blocks/step_end.inc").read_text().lower()
+        self.assertEqual(end.strip(), "*end step")
+
+    def test_step_deterministic(self):
+        one = self.build("st_one")
+        two = self.build("st_two")
+        self.assertEqual(one["blocks"]["step_loading"]["sha256"],
+                         two["blocks"]["step_loading"]["sha256"])
+        self.assertEqual(one["blocks"]["step_end"]["sha256"], two["blocks"]["step_end"]["sha256"])
+        self.assertEqual(one["build_key"], two["build_key"])
+
+    def test_step_target_strain_sensitivity(self):
+        base = self.build("tbase")
+        changed = json.loads(self.physics.read_text())
+        changed["target_compression_strain"] = 0.2
+        changed_path = Path(self.td.name) / "physics_t02.json"
+        atomic_json(changed_path, changed)
+        other = build_physical(self.npz, self.report, self.pairs_csv, changed_path,
+                               self.material, self.numerics, Path(self.td.name) / "tchanged")
+        self.assertNotEqual(base["blocks"]["step_loading"]["sha256"],
+                            other["blocks"]["step_loading"]["sha256"])
+        self.assertEqual(other["blocks"]["step_loading"]["target_displacement_mm"], -0.2)
+        self.assertIn("RP_TOP, 3, 3, -0.2",
+                      (Path(self.td.name) / "tchanged/blocks/step_loading.inc").read_text())
+        self.assertEqual(base["blocks"]["step_end"]["sha256"], other["blocks"]["step_end"]["sha256"])
+        for key in ("material_section", "rigid_platens", "boundary_conditions", "contact"):
+            self.assertEqual(base["blocks"][key]["sha256"], other["blocks"][key]["sha256"], key)
+
+    def test_step_time_period_scales(self):
+        base = self.build("t5base")
+        changed = json.loads(self.physics.read_text())
+        changed["time_period_s"] = 5.0
+        changed_path = Path(self.td.name) / "physics_t5.json"
+        atomic_json(changed_path, changed)
+        other = build_physical(self.npz, self.report, self.pairs_csv, changed_path,
+                               self.material, self.numerics, Path(self.td.name) / "t5build")
+        block = (Path(self.td.name) / "t5build/blocks/step_loading.inc").read_text()
+        self.assertIn("0.0, 0.0, 5.0, 1.0", block)
+        dynamic = [s for s in self._parse_step_sections(block) if s["keyword"].startswith("*Dynamic")][0]
+        self.assertEqual(dynamic["data"][0][1], "5.0")
+        self.assertNotEqual(base["blocks"]["step_loading"]["sha256"],
+                            other["blocks"]["step_loading"]["sha256"])
+        for key in ("material_section", "rigid_platens", "boundary_conditions", "contact", "step_end"):
+            self.assertEqual(base["blocks"][key]["sha256"], other["blocks"][key]["sha256"], key)
+
+    def test_step_increment_sensitivity(self):
+        for key, value in (("initial_increment_s", 0.002), ("minimum_increment_s", 1e-07),
+                           ("maximum_increment_s", 0.01), ("maximum_increments", 5000)):
+            base = self.build("inc_base_" + key)
+            changed = json.loads(self.numerics.read_text())
+            changed[key] = value
+            changed_path = Path(self.td.name) / ("numerics_" + key + ".json")
+            atomic_json(changed_path, changed)
+            other = build_physical(self.npz, self.report, self.pairs_csv, self.physics,
+                                   self.material, changed_path, Path(self.td.name) / ("inc_" + key))
+            self.assertNotEqual(base["blocks"]["step_loading"]["sha256"],
+                                other["blocks"]["step_loading"]["sha256"], key)
+            for other_key in ("material_section", "rigid_platens", "boundary_conditions", "contact"):
+                self.assertEqual(base["blocks"][other_key]["sha256"],
+                                 other["blocks"][other_key]["sha256"], key)
+            if key == "maximum_increments":
+                self.assertIn("inc=5000",
+                              (Path(self.td.name) / "inc_maximum_increments/blocks/step_loading.inc").read_text())
+
+    def test_step_independent_of_contact_and_platen_params(self):
+        base = self.build("ib")
+        changed = json.loads(self.physics.read_text())
+        changed["contact"]["friction"] = 0.4
+        changed["platens"]["width_factor"] = 3.0
+        changed_path = Path(self.td.name) / "physics_ic.json"
+        atomic_json(changed_path, changed)
+        other = build_physical(self.npz, self.report, self.pairs_csv, changed_path,
+                               self.material, self.numerics, Path(self.td.name) / "ic")
+        self.assertEqual(base["blocks"]["step_loading"]["sha256"],
+                         other["blocks"]["step_loading"]["sha256"])
+        self.assertNotEqual(base["blocks"]["contact"]["sha256"], other["blocks"]["contact"]["sha256"])
+        self.assertNotEqual(base["blocks"]["rigid_platens"]["sha256"],
+                            other["blocks"]["rigid_platens"]["sha256"])
+
+    def test_step_automatic_stabilization_not_implemented(self):
+        changed = json.loads(self.numerics.read_text())
+        changed["automatic_stabilization"] = True
+        changed_path = Path(self.td.name) / "numerics_stab.json"
+        atomic_json(changed_path, changed)
+        out = Path(self.td.name) / "stab_attempt"
+        with self.assertRaises(PipelineError) as caught:
+            build_physical(self.npz, self.report, self.pairs_csv, self.physics,
+                           self.material, changed_path, out)
+        self.assertEqual(caught.exception.code, "NOT_IMPLEMENTED")
+        self.assertFalse(out.exists())
+
+    def test_step_initial_acceleration_policy(self):
+        base = json.loads(self.numerics.read_text())
+        missing = {k: v for k, v in base.items() if k != "initial_acceleration_policy"}
+        non_string = dict(base, initial_acceleration_policy=1)
+        calculate = dict(base, initial_acceleration_policy="calculate")
+        for index, (data, code) in enumerate(((missing, "CONFIG_INVALID"),
+                                              (non_string, "CONFIG_INVALID"),
+                                              (calculate, "NOT_IMPLEMENTED"))):
+            path = Path(self.td.name) / ("num_%d.json" % index)
+            atomic_json(path, data)
+            with self.assertRaises(PipelineError) as caught:
+                _load_numerics(path)
+            self.assertEqual(caught.exception.code, code, index)
+        bypass = Path(self.td.name) / "num_bypass.json"
+        atomic_json(bypass, base)
+        self.assertEqual(_load_numerics(bypass)["initial_acceleration_policy"], "bypass")
+
+    def test_step_amplitude_policy(self):
+        changed = json.loads(self.physics.read_text())
+        changed["amplitude"] = "ramp"
+        changed_path = Path(self.td.name) / "physics_ramp.json"
+        atomic_json(changed_path, changed)
+        with self.assertRaises(PipelineError) as caught:
+            build_physical(self.npz, self.report, self.pairs_csv, changed_path,
+                           self.material, self.numerics, Path(self.td.name) / "ramp_attempt")
+        self.assertEqual(caught.exception.code, "NOT_IMPLEMENTED")
 
 
 if __name__ == "__main__":

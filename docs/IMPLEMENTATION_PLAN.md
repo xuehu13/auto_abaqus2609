@@ -26,7 +26,7 @@
 8. **输出**：每成功增量的 U3/RF3/能量及横向 RP；按目标版本确认 field 变量。修正 `frequency=50` 被误读为50帧的问题；设计可支持全过程 PBC/接触诊断的保存频率，记录实际场帧应变。每组 history 各自保存时间轴。
 9. **静态报告**：检查 include 存在、引用有效、标签唯一、节点集非空、实际目标位移与描述一致；原子发布 `physical.inp`、includes、`model_manifest.json`、`pbc_map.json`、`build_report.json`。禁止在 BUILD 阶段宣称物理求解通过。
 
-技术债登记：Shell Section 的 Simpson 积分点数当前 baseline 固定为 5（已明确不是不可变科研参数）；出现第二种 section policy/研究需求时再提升为 config，当前不提前建立 section plugin framework。M1-6 Output 阶段应建立独立 `config/outputs.example.json`，field/history 变量与频率不得硬编码为 Fig.1 唯一方案。
+技术债登记：Shell Section 的 Simpson 积分点数当前 baseline 固定为 5（已明确不是不可变科研参数）；出现第二种 section policy/研究需求时再提升为 config，当前不提前建立 section plugin framework。M1-6 Output 阶段应建立独立 `config/outputs.example.json`，field/history 变量与频率不得硬编码为 Fig.1 唯一方案。输出需区分三层：1) Abaqus output policy（ODB 写什么，M1-6 负责）；2) extraction policy（从 ODB 提取什么，ODB extraction 阶段负责）；3) visualization policy（曲线/云图/动画，postprocess 阶段负责）；M1-6 只负责第 1 层。Abaqus/Standard 的 `FREQUENCY=n` 表示每 n 个 increments 输出一次，不是“生成 n 帧”（防止再次把 frequency=50 误读为 50 帧等应变输出）。
 
 本阶段先交付可读完整 INP 和与手工基准的逐块差异报告；代码测试重点覆盖标签冲突、空引用、目标变更、PBC 等价与错误输入，不为每段文本格式编写镜像测试。
 
