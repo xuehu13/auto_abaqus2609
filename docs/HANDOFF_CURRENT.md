@@ -1,10 +1,10 @@
-# Current Handoff — M1-7 Checkpoint (M1 BUILD complete)
+# Current Handoff — M2 Checkpoint (Physical Data Check DONE, COMPLETED_WITH_WARNINGS)
 
 更新时间：2026-09-15
 项目：auto_abaqus2609
 branch：main
-基准 HEAD：fe80e31d932baa18363325c00331d02fac78dd3f（M1-7 完成为本地工作区修改，按规则未 commit/push）
-M1-6 feature commit：6b83d2c990907b093e882f1c7477aeea0757f2b3（`feat: add configurable output requests to physical builder`）
+基准 HEAD：63a2c5c7911d89a2d5863f7cf392786f4bfeabdb（`feat: complete M1 physical input assembly`，已 push；M2 修改为本地工作区内容，按规则未 commit）
+M1-7 完成 commit：63a2c5c7911d89a2d5863f7cf392786f4bfeabdb
 
 本文是快速接管摘要，**不替代** AGENTS/ROADMAP/PROJECT_STATUS/IMPLEMENTATION_STATUS/IMPLEMENTATION_PLAN/LOCAL_ENVIRONMENT。
 
@@ -44,7 +44,7 @@ Fig.1、论文参数、手工模型只是当前 validation baseline/profile。�
 | M1-5 step + loading | DONE |
 | M1-6 output requests | DONE |
 | M1-7 assembly/static validation | DONE（2026-09-15） |
-| M2 Physical Data Check | NOT STARTED |
+| M2 Physical Data Check | **DONE（2026-09-15，COMPLETED_WITH_WARNINGS：Fig.1 自动 physical.inp 通过真实 Abaqus 2026 Data Check，0 error / 10 warnings 保留）** |
 | M3 solve / M4 ODB extraction | NOT STARTED |
 
 ## 4. 当前 physical builder 产物
@@ -116,9 +116,9 @@ Layer 4 Visualization Policy   曲线/云图/动画/论文图      ← postproce
 
 ## 9. 已验证 / 未验证边界
 
-**已验证**：Python/Pixi 逻辑（94/94 core + 8/8 Pixi boundary，2026-09-15）；真实 Fig.1 mesh bundle smoke；block 确定性渲染；**M1-7 physical.inp 确定性装配 + 13 项仓库静态检查（合成 fixture 与真实 Fig.1 smoke 均通过）**；config 隔离（loading/contact/platen 参数互不泄漏）；hand-INP 语义逐项对比。
+**已验证**：Python/Pixi 逻辑（115/115 core + 8/8 Pixi boundary，2026-09-15）；真实 Fig.1 mesh bundle smoke；block 确定性渲染；M1-7 physical.inp 确定性装配 + 13 项仓库静态检查；config 隔离；hand-INP 语义逐项对比；**M2：Fig.1 自动 physical.inp 通过真实 Abaqus 2026 Physical Data Check（returncode=0、0 error、10 warnings 保留、`ANALYSIS DATACHECK COMPLETE`，`work/fig1_datacheck_m2_final_001`）**。
 
-**尚未验证**：Abaqus keyword parser 是否接受该 deck；Physical Data Check；自动接触初始化；自动模型 requested-output 的真实 ODB 行为（PRESELECT 采样密度）；30% solve；准静态科学有效性（`quasi_static_status=pending_qa`）；production dataset eligibility。
+**尚未验证**：30% 压缩收敛；接触在加载全过程中的物理正确性（含 10 条 M2 warning 对应的初始化调整与双侧面歧义）；PBC 大变形行为；准静态科学有效性（`quasi_static_status=pending_qa`）；自动模型 requested-output 的真实 ODB 行为；production dataset eligibility。
 
 **`dataset_eligible=false`（builder 硬性保证）。**
 
@@ -141,6 +141,8 @@ Layer 4 Visualization Policy   曲线/云图/动画/论文图      ← postproce
 ## 12. Local evidence（不进 Git）
 
 `work/` 与 `reference/` 均为 Git-ignored local-only，新机器 clone 后**可能不存在**：
+- `work/fig1_datacheck_m2_final_001/`（M2 正式 CLI 验证：DATACHECK_COMPLETED_WITH_WARNINGS，returncode=0，0 error/10 warning，execution_policy=cpus=1 solver via local_environment）
+- `work/fig1_datacheck_m2_diagnostics_summary.json`（M1 环境解堵 10-attempt 诊断链：standard_parallel=all 的可复现 pre 失败与 solver-mode 绕过）
 - `work/fig1_build_m17_smoke_001/`（M1-7 真实 Fig.1 build smoke：physical.inp + build_report.json，13/13 checks PASS）
 - `work/takeover_20260913_01/physical_snapshot/Fig1_Compression.inp`（hand keyword 语义 baseline）
 - 同目录 `.dat/.msg/.sta/.log/.odb`（接触/求解证据）
@@ -161,11 +163,37 @@ Layer 4 Visualization Policy   曲线/云图/动画/论文图      ← postproce
 
 `reference/` 仍然是 Git-ignored local evidence 区；以后只有用户明确需要时才新增独立参考资料。其内容不是仓库真值，也不能成为新机器 clone 后继续开发的必要依赖。
 
-## 14. 下一步
+## 14. M2 最终结果与 Runtime portability
 
-**M1 BUILD 已完成（M1-1..M1-7 DONE）。** 不要继续拆分 M1-8/M1-9。下一工程 milestone 是 **M2 Physical Data Check**：自动启动 Abaqus Data Check 验证 `physical.inp`，保存命令/退出码/`.dat/.msg/.log` 与初始化 ODB 证据。M1-7 static validation PASS ≠ Abaqus 接受；Abaqus 拒绝输入的可能仍然存在，这正是 M2 要回答的问题。
+### 14.1 M2 result
 
-## 15. 下一阶段明确禁止
+**Fig.1 自动 `physical.inp` 已被真实 Abaqus 2026 Physical Data Check 接受。** 正式 CLI 验证：`pixi run cli datacheck --build-dir work/fig1_build_m2... `（实际命令见 `work/fig1_datacheck_m2_final_001/command.json`）：
+
+```
+return code = 0
+ANALYSIS DATACHECK COMPLETE
+errors = 0
+warnings = 10（全部保留，未白名单）
+status = DATACHECK_COMPLETED_WITH_WARNINGS
+solve = NOT_RUN / odb_results_qa = NOT_RUN / dataset_eligible = false
+```
+
+10 条 warning（1× General Contact double-sided facets、1× STRAINFREE adjustment ratio 2.55e-2 @ node 544、8× ADJACENT SECONDARY NODES opposite sides of double-sided main surface）与手工 20% baseline 作业的诊断签名一致，**不是自动化回归**，但绝不等于"无害/已验证安全"——作为 QA obligation 移交 M3/M4 接触与力学检查。
+
+### 14.2 Runtime portability / machine execution profile（重要）
+
+1. **模型与运行策略分离**：`physical.inp` 是 machine-independent model artifact；launcher/cpus/standard_parallel 是 machine-specific execution settings，只出现在命令行与 datacheck provenance/report 中，永不进入 `physical.inp`，也永不改变 `model_key/scaffold_key/build_key`。
+2. **当前开发机事实**：Abaqus 2026，Intel i7-13650HX（14 physical / 20 logical，Abaqus 按 14 CPU 计）。观察：`standard_parallel=all`（默认）在 General Contact preprocessing（`pre|Elem|ElemC|Econtp|ConnectivityAtNodes`）中**可复现**触发 `***ERROR: EXCEEDED THE MAXIMUM AMOUNT OF THREADS TO BE USED PER DOMAIN (<=100)`（手工 baseline INP 同样失败，与 M1 writer 无关）；`standard_parallel=solver` 使同一 deck 完整通过 Data Check。这是 reproducible machine/runtime-specific failure 的实验描述，**不是**对 Abaqus 内部缺陷的源码级证明。完整 10-attempt 诊断链见 `work/fig1_datacheck_m2_diagnostics_summary.json`。
+3. **不应泛化**：其他机器不要自动假设必须 `standard_parallel=solver`——若真实验证 `standard_parallel=all` 正常，即可使用（在 `config/datacheck_runtime.local.json` 中设置）。
+4. **当前 safe Data Check profile**：`cpus=1, standard_parallel=solver`（保守默认，已作为代码内置 safe default；机器可用 `config/datacheck_runtime.local.json` 覆盖，CLI `--cpus/--standard-parallel` 优先级最高）。解析顺序：CLI → local file → safe default；来源记录在 report 的 `execution_policy.source`（`cli` / `local_environment` / `safe_default`）。
+5. **M3 Solve execution policy = TO BE VALIDATED**。候选 profile：`cpus=4, standard_parallel=solver`（element ops 串行、solver 4 CPU 并行），但必须单独实验验证，不得自动继承 Data Check policy。
+6. **Machine capability probe（Abaqus release/CPU/parallel modes/小型 datacheck 能力缓存）**：NOT IMPLEMENTED，未来需要时再设计。
+
+## 15. 下一步
+
+**M2 = DONE（COMPLETED_WITH_WARNINGS）。** 下一工程 milestone 是 **M3 single-case real solve**：先按 14.2.5 验证 Solve execution profile（候选 `cpus=4, standard_parallel=solver`），再对同一 Fig.1 case 从 datacheck 走到正式求解与完成判定。M2 的 10 条 warning 作为 M3/M4 QA 的强制输入。
+
+## 16. 下一阶段明确禁止
 
 ```
 Do NOT:
@@ -175,6 +203,7 @@ Do NOT:
 - implement UMAT
 - implement n×n×n
 - change frozen vendor mesher
-- launch full solve before M2
+- run M3 solve without first validating its execution profile
 - silently modify physics for convergence
+- whitelist the 10 M2 warnings without real mechanics QA
 ```

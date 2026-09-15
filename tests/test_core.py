@@ -4,9 +4,11 @@ import csv
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 import numpy as np
 
+from pipeline import physical_datacheck as pdc
 from pipeline.common import PipelineError, atomic_json, file_hash, tree_hash
 from pipeline.curve_qa import assess, TARGETS
 from pipeline.diagnostics import classify_messages, completion_evidence, stagnation
@@ -1284,6 +1286,313 @@ class PhysicalInpAssemblyTests(_BuilderFixtureMixin, unittest.TestCase):
         for rel in ("ingredients/shell_mesh.inc", "ingredients/lateral_pbc.inc",
                     "blocks/step_end.inc"):
             self.assertTrue((folder / rel).is_file(), rel)
+
+
+class PhysicalDataCheckTests(_BuilderFixtureMixin, unittest.TestCase):
+    """M2 regression: staging, launcher resolution and datacheck judgement.
+
+    No test here invokes a real Abaqus; subprocess and release queries are
+    mocked, and diagnostics come from small fixture files.
+    """
+
+    JOB = "fig1_m2_datacheck"
+
+    def _source(self, name="m2_source"):
+        # Prefix keeps source and datacheck-attempt directories distinct.
+        folder = Path(self.td.name) / ("src_" + name)
+        build_physical(self.npz, self.report, self.pairs_csv, self.physics,
+                       self.material, self.numerics, self.outputs, folder)
+        return folder
+
+    def _fake_launcher(self):
+        launcher = Path(self.td.name) / "fake_abaqus.bat"
+        if not launcher.exists():
+            launcher.write_text("@echo off\r\n", encoding="ascii")
+        return str(launcher)
+
+    def _fake_process(self, dat=None, msg=None, log=None, returncode=0):
+        calls = []
+
+        def fake(argv, cwd, timeout_s):
+            cwd = Path(cwd)
+            if dat is not None:
+                (cwd / (self.JOB + ".dat")).write_text(dat, encoding="utf-8")
+            if msg is not None:
+                (cwd / (self.JOB + ".msg")).write_text(msg, encoding="utf-8")
+            if log is not None:
+                (cwd / (self.JOB + ".log")).write_text(log, encoding="utf-8")
+            (cwd / (self.JOB + ".odb")).write_bytes(b"fake datacheck odb")
+            calls.append([str(part) for part in argv])
+            return returncode, "fake stdout", ""
+
+        return fake, calls
+
+    def _run_m2(self, source, out, dat, log, msg=None, returncode=0, **kwargs):
+        fake, calls = self._fake_process(dat, msg, log, returncode)
+        # Point the policy file at a nonexistent temp path so tests are machine-
+        # independent and hit the safe default unless a test overrides it.
+        kwargs.setdefault("policy_path", Path(self.td.name) / "no_policy_file.json")
+        with mock.patch("pipeline.physical_datacheck._run_process", fake), \
+                mock.patch("pipeline.physical_datacheck.query_release",
+                           return_value={"release": "Abaqus 2026 TEST", "return_code": 0}):
+            report = pdc.run_datacheck(source, out, abaqus_command=self._fake_launcher(), **kwargs)
+        return report, calls
+
+    def test_source_status_not_validated_fails(self):
+        source = self._source("bad_status")
+        manifest_path = source / "model_manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["status"] = "PHYSICAL_BUILD_PARTIAL"
+        atomic_json(manifest_path, manifest)
+        with self.assertRaises(PipelineError) as caught:
+            pdc.run_datacheck(source, Path(self.td.name) / "no_attempt",
+                              abaqus_command=self._fake_launcher())
+        self.assertEqual(caught.exception.code, "SOURCE_BUILD_INVALID")
+
+    def test_source_static_validation_not_pass_fails(self):
+        source = self._source("bad_static")
+        report_path = source / "build_report.json"
+        report = json.loads(report_path.read_text())
+        report["static_validation"] = "FAILED"
+        atomic_json(report_path, report)
+        with self.assertRaises(PipelineError) as caught:
+            pdc.run_datacheck(source, Path(self.td.name) / "no_attempt",
+                              abaqus_command=self._fake_launcher())
+        self.assertEqual(caught.exception.code, "SOURCE_BUILD_INVALID")
+
+    def test_physical_inp_sha_mismatch_fails(self):
+        source = self._source("bad_sha")
+        with (source / "physical.inp").open("a", encoding="utf-8") as stream:
+            stream.write("** tampered\n")
+        with self.assertRaises(PipelineError) as caught:
+            pdc.run_datacheck(source, Path(self.td.name) / "no_attempt",
+                              abaqus_command=self._fake_launcher())
+        self.assertEqual(caught.exception.code, "SOURCE_BUILD_INVALID")
+
+    def test_staging_preserves_input_sha_and_source(self):
+        source = self._source("staging")
+        deck_sha_before = file_hash(source / "physical.inp")
+        out = Path(self.td.name) / "staged"
+        report, _calls = self._run_m2(source, out, "ANALYSIS DATACHECK COMPLETE",
+                                      "Abaqus JOB fig1_m2_datacheck COMPLETED")
+        for entry in report["staged_files"]:
+            self.assertEqual(entry["sha256"], file_hash(out / entry["path"]), entry["path"])
+        self.assertEqual(file_hash(source / "physical.inp"), deck_sha_before)
+        self.assertTrue((out / "source_model_manifest.json").is_file())
+        self.assertTrue((out / "source_build_report.json").is_file())
+
+    def test_launcher_not_found_fails(self):
+        with self.assertRaises(PipelineError) as caught:
+            pdc.resolve_launcher("no_such_launcher_anywhere_xyz")
+        self.assertEqual(caught.exception.code, "ABAQUS_LAUNCHER_NOT_FOUND")
+        source = self._source("launcher_source")
+        out = Path(self.td.name) / "never_started"
+        with self.assertRaises(PipelineError) as caught:
+            pdc.run_datacheck(source, out, abaqus_command="no_such_launcher_anywhere_xyz")
+        self.assertEqual(caught.exception.code, "ABAQUS_LAUNCHER_NOT_FOUND")
+        self.assertFalse(out.exists())
+
+    def test_command_contains_datacheck(self):
+        source = self._source("cmd")
+        report, calls = self._run_m2(source, Path(self.td.name) / "cmd",
+                                     "ANALYSIS DATACHECK COMPLETE",
+                                     "Abaqus JOB fig1_m2_datacheck COMPLETED")
+        self.assertEqual(len(calls), 1)
+        self.assertIn("datacheck", calls[0])
+        self.assertIn("job=fig1_m2_datacheck", calls[0])
+        self.assertIn("input=physical.inp", calls[0])
+        command = json.loads((Path(self.td.name) / "cmd/command.json").read_text())
+        self.assertTrue(command["datacheck_flag_present"])
+        self.assertEqual(command["job_name"], "fig1_m2_datacheck")
+        self.assertEqual(report["abaqus"]["release"]["release"], "Abaqus 2026 TEST")
+
+    # Execution policy: safe default, overrides and validation.
+    def test_safe_default_execution_policy(self):
+        source = self._source("policy_default")
+        report, calls = self._run_m2(source, Path(self.td.name) / "policy_default",
+                                     "ANALYSIS DATACHECK COMPLETE",
+                                     "Abaqus JOB fig1_m2_datacheck COMPLETED")
+        self.assertIn("cpus=1", calls[0])
+        self.assertIn("standard_parallel=solver", calls[0])
+        self.assertEqual(report["execution_policy"],
+                         {"cpus": 1, "standard_parallel": "solver", "source": "safe_default"})
+        self.assertEqual(report["claims"]["physical_datacheck"], "PASS")
+
+    def test_local_policy_file_override(self):
+        source = self._source("policy_local")
+        policy = Path(self.td.name) / "policy_local.json"
+        atomic_json(policy, {"schema_version": 1, "cpus": 2, "standard_parallel": "all"})
+        report, calls = self._run_m2(source, Path(self.td.name) / "policy_local",
+                                     "ANALYSIS DATACHECK COMPLETE",
+                                     "Abaqus JOB fig1_m2_datacheck COMPLETED",
+                                     policy_path=policy)
+        self.assertIn("cpus=2", calls[0])
+        self.assertIn("standard_parallel=all", calls[0])
+        self.assertEqual(report["execution_policy"]["source"], "local_environment")
+        self.assertEqual(report["execution_policy"]["cpus"], 2)
+
+    def test_cli_override_beats_local_policy_file(self):
+        source = self._source("policy_cli")
+        policy = Path(self.td.name) / "policy_cli.json"
+        atomic_json(policy, {"schema_version": 1, "cpus": 2, "standard_parallel": "all"})
+        report, calls = self._run_m2(source, Path(self.td.name) / "policy_cli",
+                                     "ANALYSIS DATACHECK COMPLETE",
+                                     "Abaqus JOB fig1_m2_datacheck COMPLETED",
+                                     policy_path=policy, cpus=3, standard_parallel="solver")
+        self.assertIn("cpus=3", calls[0])
+        self.assertIn("standard_parallel=solver", calls[0])
+        self.assertEqual(report["execution_policy"]["source"], "cli")
+
+    def test_invalid_execution_policy_rejected(self):
+        source = self._source("policy_bad")
+        for kwargs in ({"cpus": 0}, {"cpus": -1}, {"cpus": "two"}, {"cpus": True},
+                       {"standard_parallel": "threads"}, {"standard_parallel": 1}):
+            with self.assertRaises(PipelineError, msg=repr(kwargs)) as caught:
+                pdc.run_datacheck(source, Path(self.td.name) / ("bad_policy_%s" % id(kwargs)),
+                                  abaqus_command=self._fake_launcher(),
+                                  policy_path=Path(self.td.name) / "no_policy_file.json",
+                                  **kwargs)
+            self.assertEqual(caught.exception.code, "CONFIG_INVALID")
+        bad_file = Path(self.td.name) / "policy_bad.json"
+        atomic_json(bad_file, {"schema_version": 1, "cpus": 1, "standard_parallel": "threads"})
+        with self.assertRaises(PipelineError) as caught:
+            pdc.run_datacheck(source, Path(self.td.name) / "bad_policy_file",
+                              abaqus_command=self._fake_launcher(), policy_path=bad_file)
+        self.assertEqual(caught.exception.code, "CONFIG_INVALID")
+        atomic_json(bad_file, {"schema_version": 2, "cpus": 1, "standard_parallel": "solver",
+                               "extra": True})
+        with self.assertRaises(PipelineError) as caught:
+            pdc.run_datacheck(source, Path(self.td.name) / "bad_policy_file2",
+                              abaqus_command=self._fake_launcher(), policy_path=bad_file)
+        self.assertEqual(caught.exception.code, "CONFIG_INVALID")
+
+    def test_command_never_analysis_or_continue(self):
+        source = self._source("cmdsafe")
+        _report, calls = self._run_m2(source, Path(self.td.name) / "cmdsafe",
+                                      "ANALYSIS DATACHECK COMPLETE",
+                                      "Abaqus JOB fig1_m2_datacheck COMPLETED")
+        for forbidden in ("analysis", "continue", "interactive=continue"):
+            self.assertNotIn(forbidden, calls[0])
+        command = json.loads((Path(self.td.name) / "cmdsafe/command.json").read_text())
+        self.assertIs(command["analysis_flag_present"], False)
+
+    def test_nonzero_returncode_fails(self):
+        source = self._source("rc")
+        report, _calls = self._run_m2(source, Path(self.td.name) / "rc",
+                                      "ANALYSIS DATACHECK COMPLETE",
+                                      "Abaqus JOB fig1_m2_datacheck COMPLETED", returncode=1)
+        self.assertEqual(report["status"], "DATACHECK_FAILED")
+        self.assertEqual(report["claims"]["physical_datacheck"], "FAIL")
+        self.assertTrue(any(reason.startswith("return_code=1")
+                            for reason in report["failure_reasons"]))
+
+    def test_error_in_dat_fails(self):
+        source = self._source("err")
+        dat = ("***ERROR: keyword is misplaced\n"
+               "line=bad_region\n"
+               "ANALYSIS DATACHECK COMPLETE\n")
+        report, _calls = self._run_m2(source, Path(self.td.name) / "err", dat,
+                                      "Abaqus JOB fig1_m2_datacheck COMPLETED")
+        self.assertEqual(report["status"], "DATACHECK_FAILED")
+        self.assertEqual(report["diagnostics"]["error_count"], 1)
+        error = report["diagnostics"]["errors"][0]
+        self.assertEqual(error["source_file"], "fig1_m2_datacheck.dat")
+        self.assertEqual(error["line_number"], 1)
+        self.assertIn("line=bad_region", error["message"])
+
+    def test_warning_only_is_completed_with_warnings(self):
+        source = self._source("warn")
+        dat = ("***WARNING: overclosure is adjusted during strainfree initialization\n"
+               "surface=PLATE_BOTTOM\n"
+               "ANALYSIS DATACHECK COMPLETE\n")
+        report, _calls = self._run_m2(source, Path(self.td.name) / "warn", dat,
+                                      "Abaqus JOB fig1_m2_datacheck COMPLETED")
+        self.assertEqual(report["status"], "DATACHECK_COMPLETED_WITH_WARNINGS")
+        self.assertEqual(report["claims"]["physical_datacheck"], "COMPLETED_WITH_WARNINGS")
+        self.assertEqual(report["diagnostics"]["error_count"], 0)
+        self.assertEqual(report["diagnostics"]["warning_count"], 1)
+        warning = report["diagnostics"]["warnings"][0]
+        self.assertIn("overclosure", warning["message"])
+        self.assertIn(warning["category"], ("CONTACT", "STRAINFREE"))
+
+    def test_clean_output_passes(self):
+        source = self._source("clean")
+        report, _calls = self._run_m2(
+            source, Path(self.td.name) / "clean",
+            "ANALYSIS DATACHECK COMPLETE\n",
+            "Abaqus JOB fig1_m2_datacheck COMPLETED\n")
+        self.assertEqual(report["status"], "DATACHECK_PASSED")
+        self.assertEqual(report["claims"]["physical_datacheck"], "PASS")
+        self.assertEqual(report["diagnostics"]["error_count"], 0)
+        self.assertEqual(report["diagnostics"]["warning_count"], 0)
+        self.assertTrue(report["diagnostics"]["datacheck_complete_evidence"])
+        self.assertTrue(report["diagnostics"]["job_completed_evidence"])
+        self.assertEqual(report["diagnostics"]["abort_evidence"], [])
+        self.assertTrue((Path(self.td.name) / "clean/datacheck_report.json").is_file())
+
+    def test_missing_required_artifact_fails(self):
+        source = self._source("nodat")
+        report, _calls = self._run_m2(source, Path(self.td.name) / "nodat", dat=None,
+                                      log="Abaqus JOB fig1_m2_datacheck COMPLETED")
+        self.assertEqual(report["status"], "DATACHECK_FAILED")
+        self.assertIn("missing required artifacts: dat", report["failure_reasons"])
+
+    def test_missing_odb_fails(self):
+        # .odb is required; a completed-looking run without it must not pass.
+        source = self._source("noodb")
+
+        def fake_no_odb(argv, cwd, timeout_s):
+            cwd = Path(cwd)
+            (cwd / (self.JOB + ".dat")).write_text("ANALYSIS DATACHECK COMPLETE", encoding="utf-8")
+            (cwd / (self.JOB + ".log")).write_text(
+                "Abaqus JOB fig1_m2_datacheck COMPLETED", encoding="utf-8")
+            return 0, "fake stdout", ""
+
+        with mock.patch("pipeline.physical_datacheck._run_process", fake_no_odb), \
+                mock.patch("pipeline.physical_datacheck.query_release",
+                           return_value={"release": "Abaqus 2026 TEST", "return_code": 0}):
+            report = pdc.run_datacheck(source, Path(self.td.name) / "noodb",
+                                       abaqus_command=self._fake_launcher(),
+                                       policy_path=Path(self.td.name) / "no_policy_file.json")
+        self.assertEqual(report["status"], "DATACHECK_FAILED")
+        self.assertIn("missing required artifacts: odb", report["failure_reasons"])
+
+    def test_missing_log_alone_does_not_fail(self):
+        # Abaqus 2026 datacheck interactive runs complete without writing a .log.
+        source = self._source("nolog")
+        report, _calls = self._run_m2(source, Path(self.td.name) / "nolog",
+                                      dat="ANALYSIS DATACHECK COMPLETE", log=None)
+        self.assertEqual(report["status"], "DATACHECK_PASSED")
+        self.assertNotIn("log", [f["kind"] for f in report["artifacts"]["generated_files"]])
+
+    def test_report_claims_solve_and_odb_qa_not_run(self):
+        source = self._source("claims")
+        report, _calls = self._run_m2(source, Path(self.td.name) / "claims",
+                                      "ANALYSIS DATACHECK COMPLETE",
+                                      "Abaqus JOB fig1_m2_datacheck COMPLETED")
+        self.assertEqual(report["claims"]["solve"], "NOT_RUN")
+        self.assertEqual(report["claims"]["odb_results_qa"], "NOT_RUN")
+        self.assertTrue((Path(self.td.name) / "claims/command.json").is_file())
+        self.assertTrue((Path(self.td.name) / "claims/stdout.txt").is_file())
+        self.assertTrue((Path(self.td.name) / "claims/stderr.txt").is_file())
+
+    def test_report_dataset_eligible_false(self):
+        source = self._source("eligible")
+        report, _calls = self._run_m2(source, Path(self.td.name) / "eligible",
+                                      "ANALYSIS DATACHECK COMPLETE",
+                                      "Abaqus JOB fig1_m2_datacheck COMPLETED")
+        self.assertIs(report["claims"]["dataset_eligible"], False)
+
+    def test_existing_attempt_not_overwritten(self):
+        source = self._source("existing")
+        out = Path(self.td.name) / "existing_attempt"
+        out.mkdir()
+        (out / "sentinel.txt").write_text("keep", encoding="utf-8")
+        with self.assertRaises(PipelineError) as caught:
+            self._run_m2(source, out, "ANALYSIS DATACHECK COMPLETE",
+                         "Abaqus JOB fig1_m2_datacheck COMPLETED")
+        self.assertEqual(caught.exception.code, "OUTPUT_EXISTS")
+        self.assertEqual((out / "sentinel.txt").read_text(), "keep")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # v0.1 实施状态与后续接口
 
-## M1 进度（M1-1..M1-6 checkpoint 2026-09-15；M1-7 checkpoint 2026-09-15 → **M1 BUILD complete**）
+## M1/M2 进度（M1-1..M1-7 checkpoint 2026-09-15 → M1 BUILD complete；M2 checkpoint 2026-09-15 → **M2 DONE, COMPLETED_WITH_WARNINGS**）
 
 ### M1-1 已完成：physical builder scaffold
 - `pipeline/physical_builder.py` 与 `run.py build-physical` CLI（Pixi default 守卫不变，现有命令语义未改）。
@@ -62,6 +62,14 @@
 - 测试：新增 21 个 M1-7 回归测试（`PhysicalInpAssemblyTests`）；`_render_outputs` 对不存在 region（TEST_SET）仍只渲染不检查存在性（renderer 职责不变），final `build_physical` 则必须 STATIC_VALIDATION_FAILED（有测试）。`pixi run test`：94/94 core + 8/8 Pixi boundary。
 - 真实 Fig.1 smoke：`work/fig1_build_m17_smoke_001`（npz/report/pairs 指纹与 M1-6 smoke manifest 一致）→ 13/13 checks PASS，`static_validation=PASS`，`abaqus_datacheck=NOT_RUN`，`dataset_eligible=false`。
 - **Abaqus 未被调用**：static validation PASS ≠ Abaqus keyword parser 接受 ≠ Data Check 通过 ≠ 可求解。
+
+### M2 已完成（2026-09-15，COMPLETED_WITH_WARNINGS）：Physical Data Check
+- 新增 `pipeline/physical_datacheck.py`（窄职责）：source build 校验（status=PHYSICAL_INP_STATIC_VALIDATED、static_validation=PASS、physical.inp SHA 对 manifest）→ attempt 内 SHA 双向校验 staging（physical.inp + 9 includes + source manifest/report provenance）→ launcher resolution（CLI --abaqus-command → environment.local.json abaqus_launcher → PATH abaqus → PATH abq2026；不可解析 → ABAQUS_LAUNCHER_NOT_FOUND）→ **execution policy 解析（CLI `--cpus/--standard-parallel` → `config/datacheck_runtime.local.json`（`*.local.json` 已 git-ignore）→ safe default `cpus=1, standard_parallel=solver`；非法值 → CONFIG_INVALID；来源记录为 cli/local_environment/safe_default）** → `abaqus job=<验证过的名称> input=physical.inp datacheck interactive cpus=<n> standard_parallel=<mode>`（cwd=attempt；命令恒含 datacheck，绝不含 analysis/continue）→ 保留全部生成文件（.dat/.msg/.odb/.prt/.mdl/.stt/.sim/.cax/.com/.env/.exception 等；required = .dat + .odb + stdout 捕获，.msg/.log/.exception optional——Abaqus 2026 datacheck interactive 不生成 .log）→ line-oriented ERROR/WARNING 解析（保留原文+行号+来源+轻量分类，无白名单）→ DATACHECK_PASSED / COMPLETED_WITH_WARNINGS / FAILED 判定 → `datacheck_report.json`（含 execution_policy；claims: solve=NOT_RUN、odb_results_qa=NOT_RUN、dataset_eligible=false 恒定）。
+- CLI：`pixi run cli datacheck --build-dir <M1 build> --out <新attempt> [--abaqus-command] [--job-name] [--cpus] [--standard-parallel]`；非 clean pass 退出码 3。
+- 测试：新增 21 个 M2 回归测试（mock subprocess/release，不调用真实 Abaqus；覆盖 policy 默认/覆盖/优先级/非法值、required artifacts、三态判定、claims discipline）；总计 **115 core + 8 boundary 全过**。
+- **Runtime portability 原则**：execution policy 是 machine/runtime-local 配置，只进命令行与 datacheck provenance，永不进入 physical.inp 或 model_key/scaffold_key/build_key；同一 physical.inp 可在不同机器用不同 execution profile。M3 Solve execution policy = TO BE VALIDATED（候选 `cpus=4, standard_parallel=solver`），不得自动继承 Data Check policy。
+- **真实 Fig.1 Data Check 最终结果**（正式 CLI，`work/fig1_datacheck_m2_final_001`，physical.inp SHA `AD93E91B…` 与 M1 manifest 一致）：**returncode=0、`ANALYSIS DATACHECK COMPLETE`、0 error、10 warnings**（1× General Contact double-sided facets、1× STRAINFREE adjustment ratio 2.55e-2 @ node 544、8× ADJACENT SECONDARY NODES opposite sides of double-sided main surface——与手工 20% baseline 诊断签名一致）→ `status=DATACHECK_COMPLETED_WITH_WARNINGS`。**M2 = DONE。**
+- 开发机 runtime 事实（reproducible machine/runtime-specific failure，谨慎表述）：默认 `standard_parallel=all` 在 General Contact preprocessing 触发 `***ERROR: EXCEEDED THE MAXIMUM AMOUNT OF THREADS TO BE USED PER DOMAIN (<=100)`（手工 baseline 同样失败；cpus/reqcpus/env 变量均排除；10-attempt 诊断链见 `work/fig1_datacheck_m2_diagnostics_summary.json`）；`standard_parallel=solver` 绕过该路径。其他机器不得自动假设需要同样 workaround。
 
 ## 已实现且经过本地逻辑验证
 

@@ -48,6 +48,13 @@ def main():
     p.add_argument("--numerics", default=str(ROOT / "config/numerics.example.json"))
     p.add_argument("--outputs", default=str(ROOT / "config/outputs.example.json"))
     p.add_argument("--out", required=True)
+    p = sub.add_parser("datacheck", help="Stage a static-validated M1 build and run one real Abaqus Physical Data Check (datacheck only; never a solve)")
+    p.add_argument("--build-dir", required=True)
+    p.add_argument("--out", required=True)
+    p.add_argument("--abaqus-command", help="Explicit Abaqus launcher; default order: environment.local.json abaqus_launcher -> PATH abaqus -> PATH abq2026")
+    p.add_argument("--job-name", default="fig1_m2_datacheck")
+    p.add_argument("--cpus", type=int, help="Data Check execution policy override; default order: config/datacheck_runtime.local.json -> safe default cpus=1")
+    p.add_argument("--standard-parallel", help="Data Check execution policy override (all|solver); default order: config/datacheck_runtime.local.json -> safe default standard_parallel=solver")
     p = sub.add_parser("qa-history", help="Check a previously aligned history CSV; does not accept samples into a dataset")
     p.add_argument("--csv", required=True)
     p.add_argument("--height-mm", type=float, required=True)
@@ -81,6 +88,10 @@ def main():
         from pipeline.physical_builder import build as build_physical
         result = build_physical(args.npz, args.report, args.pairs, args.physics,
                                 args.material, args.numerics, args.outputs, args.out)
+    elif args.command == "datacheck":
+        from pipeline.physical_datacheck import run_datacheck
+        result = run_datacheck(args.build_dir, args.out, args.abaqus_command, args.job_name,
+                               cpus=args.cpus, standard_parallel=args.standard_parallel)
     elif args.command == "qa-history":
         from pipeline.curve_qa import assess
         if Path(args.out).exists():
@@ -105,6 +116,9 @@ def main():
     print(json.dumps(result, indent=2, ensure_ascii=False, allow_nan=False))
     if isinstance(result, dict) and result.get("status") == "CURVE_QA_FAILED":
         return 3
+    if isinstance(result, dict) and result.get("status") in (
+            "DATACHECK_FAILED", "DATACHECK_COMPLETED_WITH_WARNINGS"):
+        return 3  # Non-clean datacheck: report is written, exit code signals review needed.
     return 0
 
 

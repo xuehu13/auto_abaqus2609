@@ -1,6 +1,6 @@
 # DiffuMeta Automation
 
-Abaqus 周期性多孔表面网格自动化与压缩仿真数据流水线：把冻结的 `periodic_surface_mesher v1.0` 网格模块和手工 Abaqus 物理模型接成可管理的批量系统。当前 v0.1 提供隔离网格准备、FE 输入片段、完整物理 `physical.inp` 自动装配（含仓库级静态验证）、曲线 QA 与状态账本基础；Abaqus Physical Data Check、调度与恢复尚未实现（见 `docs/IMPLEMENTATION_STATUS.md` 与 `docs/PROJECT_STATUS.md`）。
+Abaqus 周期性多孔表面网格自动化与压缩仿真数据流水线：把冻结的 `periodic_surface_mesher v1.0` 网格模块和手工 Abaqus 物理模型接成可管理的批量系统。当前 v0.1 已实现：隔离网格准备、FE 输入片段、完整物理 `physical.inp` 自动装配（仓库级静态验证）、**真实 Abaqus 2026 Physical Data Check（Fig.1 已通过：0 error / 10 warnings 保留，`COMPLETED_WITH_WARNINGS`）**、曲线 QA 与状态账本基础。M3 solve 尚未开始（其 execution policy 待单独验证）；开发机 runtime 事实与跨机器配置见 `docs/HANDOFF_CURRENT.md` 与 `config/datacheck_runtime.example.json`。
 
 ## 环境：Pixi 是唯一普通环境管理器
 
@@ -20,6 +20,8 @@ pixi run cli --help   # 全部现有 CLI 命令
 pixi run cli prepare-mesher --case config/cases/fig1.json --out work/<新attempt>
 pixi run mesh-pre / mesh-post / mesh-check --out work/<新attempt> [--from-attempt ...]
 pixi run build-cgal --check-only        # 编译工具链检查；实际构建需 --out
+pixi run cli build-physical --npz ... --report ... --pairs ... --out work/<新attempt>
+pixi run cli datacheck --build-dir work/<M1 build> --out work/<新attempt>   # 真实 Abaqus Physical Data Check；不 solve
 ```
 
 每次输出必须使用新的 `work/<attempt>` 目录，拒绝覆盖。
@@ -170,4 +172,4 @@ abaqus python abaqus_worker/export_history.py --odb F:/your_case/job.odb --out F
 
 ## 8. 接下来实际开发什么
 
-完整 physical INP writer（M1-1..M1-7）已完成并通过仓库级静态验证与真实 Fig.1 smoke。下一步是用真实 Fig.1 在 Abaqus 2026 做 **Physical Data Check（M2）**，随后完成同一个 case 的 30% 求解、ODB 提取、质量检查，再接上全队列的执行与恢复。每一步的明确验收标准已经写入完整方案，避免重复设计。
+M1（writer）与 M2（Physical Data Check）均已完成：Fig.1 自动 `physical.inp` 已被真实 Abaqus 2026 Data Check 接受（0 error / 10 warnings 保留）。下一工程 milestone 是 **M3 single-case real solve**：先单独验证 Solve execution profile（候选 `cpus=4, standard_parallel=solver`；不得自动继承 Data Check policy），再把同一 Fig.1 case 从 datacheck 走到正式求解、ODB 提取与质量检查（M2 的 10 条 warning 是 M3/M4 QA 的强制输入）。每一步的明确验收标准已经写入完整方案，避免重复设计。
