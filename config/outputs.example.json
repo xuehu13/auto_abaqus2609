@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "profile_id": "fig1_baseline_outputs_v1",
+  "restart": {
+    "policy": "disabled"
+  },
+  "field_groups": [
+    {
+      "schedule": {
+        "type": "every_n_increments",
+        "n": 50
+      },
+      "mode": "preselect"
+    }
+  ],
+  "history_groups": [
+    {
+      "schedule": {
+        "type": "every_n_increments",
+        "n": 1
+      },
+      "requests": [
+        {
+          "kind": "energy",
+          "region": {
+            "type": "whole_model"
+          },
+          "mode": "explicit",
+          "variables": [
+            "ALLAE",
+            "ALLIE",
+            "ALLKE",
+            "ALLPD",
+            "ALLWK",
+            "ETOTAL"
+          ]
+        },
+        {
+          "kind": "node",
+          "region": {
+            "type": "node_set",
+            "name": "RP_TOP"
+          },
+          "mode": "explicit",
+          "variables": ["RF3", "U3"]
+        },
+        {
+          "kind": "node",
+          "region": {
+            "type": "node_set",
+            "name": "RP_X_CTRL"
+          },
+          "mode": "explicit",
+          "variables": ["U1"]
+        },
+        {
+          "kind": "node",
+          "region": {
+            "type": "node_set",
+            "name": "RP_Y_CTRL"
+          },
+          "mode": "explicit",
+          "variables": ["U2"]
+        }
+      ]
+    },
+    {
+      "schedule": {
+        "type": "every_n_increments",
+        "n": 10
+      },
+      "mode": "preselect"
+    }
+  ]
+}

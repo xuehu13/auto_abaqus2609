@@ -193,6 +193,7 @@ class PhysicalBuilderTests(unittest.TestCase):
         atomic_json(self.physics, physics)
         self.material = ROOT / "config/materials/demo_surrogate.json"
         self.numerics = ROOT / "config/numerics.example.json"
+        self.outputs = ROOT / "config/outputs.example.json"
 
     def _write_bundle(self, name, scale):
         """Cube mesh scaled by `scale`; schema fixture only, never a Fig.1 result."""
@@ -223,7 +224,8 @@ class PhysicalBuilderTests(unittest.TestCase):
 
     def build(self, name="build", numerics=None):
         return build_physical(self.npz, self.report, self.pairs_csv, self.physics,
-                              self.material, numerics or self.numerics, Path(self.td.name) / name)
+                              self.material, numerics or self.numerics, self.outputs,
+                              Path(self.td.name) / name)
 
     def test_output_exists_rejected(self):
         self.build()
@@ -235,7 +237,8 @@ class PhysicalBuilderTests(unittest.TestCase):
         out = Path(self.td.name) / "never_created"
         with self.assertRaises(PipelineError) as caught:
             build_physical(self.npz, self.report, self.pairs_csv, self.physics,
-                           self.material, Path(self.td.name) / "absent_numerics.json", out)
+                           self.material, Path(self.td.name) / "absent_numerics.json",
+                           self.outputs, out)
         self.assertEqual(caught.exception.code, "INPUT_MISSING")
         self.assertFalse(out.exists())
 
@@ -257,7 +260,7 @@ class PhysicalBuilderTests(unittest.TestCase):
         out = Path(self.td.name) / "invalid_attempt"
         with self.assertRaises(PipelineError) as caught:
             build_physical(self.npz, self.report, self.pairs_csv, self.physics,
-                           self.material, bad_path, out)
+                           self.material, bad_path, self.outputs, out)
         self.assertEqual(caught.exception.code, "CONFIG_INVALID")
         self.assertFalse(out.exists())
 
@@ -324,7 +327,8 @@ class PhysicalBuilderTests(unittest.TestCase):
         changed_path = Path(self.td.name) / "material_changed.json"
         atomic_json(changed_path, changed)
         other = build_physical(self.npz, self.report, self.pairs_csv, self.physics,
-                               changed_path, self.numerics, Path(self.td.name) / "changed")
+                               changed_path, self.numerics, self.outputs,
+                               Path(self.td.name) / "changed")
         self.assertNotEqual(base["blocks"]["material_section"]["sha256"],
                             other["blocks"]["material_section"]["sha256"])
         self.assertNotEqual(base["build_key"], other["build_key"])
@@ -364,7 +368,8 @@ class PhysicalBuilderTests(unittest.TestCase):
     def test_platen_fig1_scale_geometry(self):
         npz, report, pairs_csv = self._write_bundle("l10", 10.0)
         manifest = build_physical(npz, report, pairs_csv, ROOT / "config/physics.example.json",
-                                  self.material, self.numerics, Path(self.td.name) / "l10build")
+                                  self.material, self.numerics, self.outputs,
+                                  Path(self.td.name) / "l10build")
         rp = manifest["blocks"]["rigid_platens"]
         labels = manifest["labels"]
         self.assertEqual(rp["width_mm"], 18.0)
@@ -457,7 +462,8 @@ class PhysicalBuilderTests(unittest.TestCase):
         changed_path = Path(self.td.name) / "physics_w3.json"
         atomic_json(changed_path, changed)
         other = build_physical(self.npz, self.report, self.pairs_csv, changed_path,
-                               self.material, self.numerics, Path(self.td.name) / "wchanged")
+                               self.material, self.numerics, self.outputs,
+                               Path(self.td.name) / "wchanged")
         self.assertNotEqual(base["blocks"]["rigid_platens"]["sha256"],
                             other["blocks"]["rigid_platens"]["sha256"])
         self.assertEqual(base["blocks"]["material_section"]["sha256"],
@@ -466,6 +472,8 @@ class PhysicalBuilderTests(unittest.TestCase):
                          other["blocks"]["boundary_conditions"]["sha256"])
         self.assertEqual(base["blocks"]["contact"]["sha256"],
                          other["blocks"]["contact"]["sha256"])
+        self.assertEqual(base["blocks"]["outputs"]["sha256"],
+                         other["blocks"]["outputs"]["sha256"])
         self.assertNotEqual(base["build_key"], other["build_key"])
 
     def test_unsupported_platen_type(self):
@@ -545,7 +553,8 @@ class PhysicalBuilderTests(unittest.TestCase):
         changed_path = Path(self.td.name) / "physics_strain20.json"
         atomic_json(changed_path, changed)
         other = build_physical(self.npz, self.report, self.pairs_csv, changed_path,
-                               self.material, self.numerics, Path(self.td.name) / "lchanged")
+                               self.material, self.numerics, self.outputs,
+                               Path(self.td.name) / "lchanged")
         self.assertEqual(base["blocks"]["boundary_conditions"]["sha256"],
                          other["blocks"]["boundary_conditions"]["sha256"])
         self.assertEqual(base["blocks"]["contact"]["sha256"],
@@ -607,7 +616,8 @@ class PhysicalBuilderTests(unittest.TestCase):
         changed_path = Path(self.td.name) / "physics_slip01.json"
         atomic_json(changed_path, changed)
         other = build_physical(self.npz, self.report, self.pairs_csv, changed_path,
-                               self.material, self.numerics, Path(self.td.name) / "schanged")
+                               self.material, self.numerics, self.outputs,
+                               Path(self.td.name) / "schanged")
         self.assertNotEqual(base["blocks"]["contact"]["sha256"],
                             other["blocks"]["contact"]["sha256"])
         self.assertNotIn("slip tolerance=0.005",
@@ -627,7 +637,8 @@ class PhysicalBuilderTests(unittest.TestCase):
         changed_path = Path(self.td.name) / "physics_f03.json"
         atomic_json(changed_path, changed)
         other = build_physical(self.npz, self.report, self.pairs_csv, changed_path,
-                               self.material, self.numerics, Path(self.td.name) / "fchanged")
+                               self.material, self.numerics, self.outputs,
+                               Path(self.td.name) / "fchanged")
         self.assertNotEqual(base["blocks"]["contact"]["sha256"],
                             other["blocks"]["contact"]["sha256"])
         self.assertEqual(base["blocks"]["material_section"]["sha256"],
@@ -636,6 +647,8 @@ class PhysicalBuilderTests(unittest.TestCase):
                          other["blocks"]["rigid_platens"]["sha256"])
         self.assertEqual(base["blocks"]["boundary_conditions"]["sha256"],
                          other["blocks"]["boundary_conditions"]["sha256"])
+        self.assertEqual(base["blocks"]["outputs"]["sha256"],
+                         other["blocks"]["outputs"]["sha256"])
 
     def test_contact_supported_policy(self):
         manifest = {"labels": self._labels()}
@@ -741,12 +754,14 @@ class PhysicalBuilderTests(unittest.TestCase):
         changed_path = Path(self.td.name) / "physics_t02.json"
         atomic_json(changed_path, changed)
         other = build_physical(self.npz, self.report, self.pairs_csv, changed_path,
-                               self.material, self.numerics, Path(self.td.name) / "tchanged")
+                               self.material, self.numerics, self.outputs,
+                               Path(self.td.name) / "tchanged")
         self.assertNotEqual(base["blocks"]["step_loading"]["sha256"],
                             other["blocks"]["step_loading"]["sha256"])
         self.assertEqual(other["blocks"]["step_loading"]["target_displacement_mm"], -0.2)
         self.assertIn("RP_TOP, 3, 3, -0.2",
                       (Path(self.td.name) / "tchanged/blocks/step_loading.inc").read_text())
+        self.assertEqual(base["blocks"]["outputs"]["sha256"], other["blocks"]["outputs"]["sha256"])
         self.assertEqual(base["blocks"]["step_end"]["sha256"], other["blocks"]["step_end"]["sha256"])
         for key in ("material_section", "rigid_platens", "boundary_conditions", "contact"):
             self.assertEqual(base["blocks"][key]["sha256"], other["blocks"][key]["sha256"], key)
@@ -758,7 +773,8 @@ class PhysicalBuilderTests(unittest.TestCase):
         changed_path = Path(self.td.name) / "physics_t5.json"
         atomic_json(changed_path, changed)
         other = build_physical(self.npz, self.report, self.pairs_csv, changed_path,
-                               self.material, self.numerics, Path(self.td.name) / "t5build")
+                               self.material, self.numerics, self.outputs,
+                               Path(self.td.name) / "t5build")
         block = (Path(self.td.name) / "t5build/blocks/step_loading.inc").read_text()
         self.assertIn("0.0, 0.0, 5.0, 1.0", block)
         dynamic = [s for s in self._parse_step_sections(block) if s["keyword"].startswith("*Dynamic")][0]
@@ -777,7 +793,8 @@ class PhysicalBuilderTests(unittest.TestCase):
             changed_path = Path(self.td.name) / ("numerics_" + key + ".json")
             atomic_json(changed_path, changed)
             other = build_physical(self.npz, self.report, self.pairs_csv, self.physics,
-                                   self.material, changed_path, Path(self.td.name) / ("inc_" + key))
+                                   self.material, changed_path, self.outputs,
+                                   Path(self.td.name) / ("inc_" + key))
             self.assertNotEqual(base["blocks"]["step_loading"]["sha256"],
                                 other["blocks"]["step_loading"]["sha256"], key)
             for other_key in ("material_section", "rigid_platens", "boundary_conditions", "contact"):
@@ -795,7 +812,8 @@ class PhysicalBuilderTests(unittest.TestCase):
         changed_path = Path(self.td.name) / "physics_ic.json"
         atomic_json(changed_path, changed)
         other = build_physical(self.npz, self.report, self.pairs_csv, changed_path,
-                               self.material, self.numerics, Path(self.td.name) / "ic")
+                               self.material, self.numerics, self.outputs,
+                               Path(self.td.name) / "ic")
         self.assertEqual(base["blocks"]["step_loading"]["sha256"],
                          other["blocks"]["step_loading"]["sha256"])
         self.assertNotEqual(base["blocks"]["contact"]["sha256"], other["blocks"]["contact"]["sha256"])
@@ -810,7 +828,7 @@ class PhysicalBuilderTests(unittest.TestCase):
         out = Path(self.td.name) / "stab_attempt"
         with self.assertRaises(PipelineError) as caught:
             build_physical(self.npz, self.report, self.pairs_csv, self.physics,
-                           self.material, changed_path, out)
+                           self.material, changed_path, self.outputs, out)
         self.assertEqual(caught.exception.code, "NOT_IMPLEMENTED")
         self.assertFalse(out.exists())
 
@@ -838,8 +856,206 @@ class PhysicalBuilderTests(unittest.TestCase):
         atomic_json(changed_path, changed)
         with self.assertRaises(PipelineError) as caught:
             build_physical(self.npz, self.report, self.pairs_csv, changed_path,
-                           self.material, self.numerics, Path(self.td.name) / "ramp_attempt")
+                           self.material, self.numerics, self.outputs,
+                           Path(self.td.name) / "ramp_attempt")
         self.assertEqual(caught.exception.code, "NOT_IMPLEMENTED")
+
+    def test_outputs_block_content(self):
+        manifest = self.build()
+        block = (Path(self.td.name) / "build/blocks/outputs.inc").read_text()
+        sections = self._parse_step_sections(block)
+        self.assertEqual([s["keyword"] for s in sections],
+                         ["*Restart, write, frequency=0",
+                          "*Output, field, variable=PRESELECT, frequency=50",
+                          "*Output, history, frequency=1",
+                          "*Energy Output",
+                          "*Node Output, nset=RP_TOP",
+                          "*Node Output, nset=RP_X_CTRL",
+                          "*Node Output, nset=RP_Y_CTRL",
+                          "*Output, history, variable=PRESELECT, frequency=10"])
+        self.assertEqual(sections[3]["data"],
+                         [["ALLAE", "ALLIE", "ALLKE", "ALLPD", "ALLWK", "ETOTAL"]])
+        self.assertEqual(sections[4]["data"], [["RF3", "U3"]])
+        self.assertEqual(sections[5]["data"], [["U1"]])
+        self.assertEqual(sections[6]["data"], [["U2"]])
+        self.assertEqual(manifest["blocks"]["outputs"]["required_regions"],
+                         ["RP_TOP", "RP_X_CTRL", "RP_Y_CTRL"])
+        self.assertEqual(manifest["outputs_config_sha256"], file_hash(self.outputs))
+
+    def test_outputs_scope_guard(self):
+        self.build()
+        block = (Path(self.td.name) / "build/blocks/outputs.inc").read_text().lower()
+        for token in ("*boundary", "*step", "*dynamic", "*amplitude", "*contact", "*surface",
+                      "*cload", "*dload", "*dsload", "*end step"):
+            self.assertNotIn(token, block)
+
+    def test_outputs_deterministic(self):
+        one = self.build("o_one")
+        two = self.build("o_two")
+        self.assertEqual(one["blocks"]["outputs"]["sha256"], two["blocks"]["outputs"]["sha256"])
+        self.assertEqual(one["build_key"], two["build_key"])
+
+    def test_outputs_schedule_sensitivity(self):
+        for name, mutation in (("field", {"field_groups": [
+                                   {"schedule": {"type": "every_n_increments", "n": 25},
+                                    "mode": "preselect"}]}),
+                               ("group1", {"history_groups": [
+                                   {"schedule": {"type": "every_n_increments", "n": 2},
+                                    "requests": json.loads(
+                                        self.outputs.read_text())["history_groups"][0]["requests"]},
+                                   {"schedule": {"type": "every_n_increments", "n": 10},
+                                    "mode": "preselect"}]}),
+                               ("group2", {"history_groups": [
+                                   json.loads(self.outputs.read_text())["history_groups"][0],
+                                   {"schedule": {"type": "every_n_increments", "n": 5},
+                                    "mode": "preselect"}]})):
+            base = self.build("sched_base_" + name)
+            changed = json.loads(self.outputs.read_text())
+            changed.update(mutation)
+            changed_path = Path(self.td.name) / ("outputs_" + name + ".json")
+            atomic_json(changed_path, changed)
+            other = build_physical(self.npz, self.report, self.pairs_csv, self.physics,
+                                   self.material, self.numerics, changed_path,
+                                   Path(self.td.name) / ("sched_" + name))
+            self.assertNotEqual(base["blocks"]["outputs"]["sha256"],
+                                other["blocks"]["outputs"]["sha256"], name)
+            self.assertNotEqual(base["build_key"], other["build_key"], name)
+            for key in ("material_section", "rigid_platens", "boundary_conditions",
+                        "contact", "step_loading", "step_end"):
+                self.assertEqual(base["blocks"][key]["sha256"],
+                                 other["blocks"][key]["sha256"], name + ":" + key)
+
+    def test_outputs_variable_change(self):
+        base = self.build("vbase")
+        changed = json.loads(self.outputs.read_text())
+        changed["history_groups"][0]["requests"][1]["variables"] = ["RF3"]
+        changed_path = Path(self.td.name) / "outputs_var.json"
+        atomic_json(changed_path, changed)
+        other = build_physical(self.npz, self.report, self.pairs_csv, self.physics,
+                               self.material, self.numerics, changed_path,
+                               Path(self.td.name) / "vchanged")
+        self.assertNotEqual(base["blocks"]["outputs"]["sha256"], other["blocks"]["outputs"]["sha256"])
+        self.assertNotIn("U3", (Path(self.td.name) / "vchanged/blocks/outputs.inc").read_text())
+        for key in ("material_section", "rigid_platens", "boundary_conditions",
+                    "contact", "step_loading", "step_end"):
+            self.assertEqual(base["blocks"][key]["sha256"], other["blocks"][key]["sha256"], key)
+
+    def test_outputs_region_change_and_provenance(self):
+        base = self.build("rbase")
+        # Unknown node set: rendered and collected, existence deferred to M1-7.
+        changed = json.loads(self.outputs.read_text())
+        changed["history_groups"][0]["requests"][1]["region"]["name"] = "TEST_SET"
+        changed_path = Path(self.td.name) / "outputs_region.json"
+        atomic_json(changed_path, changed)
+        other = build_physical(self.npz, self.report, self.pairs_csv, self.physics,
+                               self.material, self.numerics, changed_path,
+                               Path(self.td.name) / "rchanged")
+        self.assertIn("*Node Output, nset=TEST_SET",
+                      (Path(self.td.name) / "rchanged/blocks/outputs.inc").read_text())
+        self.assertIn("TEST_SET", other["blocks"]["outputs"]["required_regions"])
+        self.assertNotEqual(base["blocks"]["outputs"]["sha256"], other["blocks"]["outputs"]["sha256"])
+
+    def test_outputs_profile_id_is_metadata_only(self):
+        base = self.build("pid_base")
+        changed = json.loads(self.outputs.read_text())
+        changed["profile_id"] = "renamed_profile"
+        changed_path = Path(self.td.name) / "outputs_pid.json"
+        atomic_json(changed_path, changed)
+        other = build_physical(self.npz, self.report, self.pairs_csv, self.physics,
+                               self.material, self.numerics, changed_path,
+                               Path(self.td.name) / "pid_changed")
+        self.assertEqual(other["blocks"]["outputs"]["profile_id"], "renamed_profile")
+        self.assertEqual(base["blocks"]["outputs"]["sha256"], other["blocks"]["outputs"]["sha256"])
+        self.assertEqual(base["build_key"], other["build_key"])
+        self.assertNotEqual(base["outputs_config_sha256"], other["outputs_config_sha256"])
+
+    def test_outputs_preflight_errors(self):
+        good = json.loads(self.outputs.read_text())
+        out = Path(self.td.name) / "never_created"
+        cases = (
+            ("schema2", dict(good, schema_version=2), "NOT_IMPLEMENTED"),
+            ("schema_str", dict(good, schema_version="1"), "CONFIG_INVALID"),
+            ("profile_empty", dict(good, profile_id=""), "CONFIG_INVALID"),
+            ("restart_on", dict(good, restart={"policy": "every_n_increments"}), "NOT_IMPLEMENTED"),
+            ("n_zero", dict(good, field_groups=[
+                {"schedule": {"type": "every_n_increments", "n": 0}, "mode": "preselect"}]), "CONFIG_INVALID"),
+            ("n_bool", dict(good, field_groups=[
+                {"schedule": {"type": "every_n_increments", "n": True}, "mode": "preselect"}]), "CONFIG_INVALID"),
+            ("sched_interval", dict(good, field_groups=[
+                {"schedule": {"type": "number_intervals"}, "mode": "preselect"}]), "NOT_IMPLEMENTED"),
+            ("field_explicit", dict(good, field_groups=[
+                {"schedule": {"type": "every_n_increments", "n": 5}, "mode": "explicit",
+                 "requests": [{"kind": "node", "region": {"type": "node_set", "name": "RP_TOP"},
+                               "mode": "explicit", "variables": ["U1"]}]}]), "NOT_IMPLEMENTED"),
+            ("unknown_kind", dict(good, history_groups=[
+                {"schedule": {"type": "every_n_increments", "n": 1}, "requests": [
+                    {"kind": "contact", "region": {"type": "whole_model"}, "mode": "explicit",
+                     "variables": ["CPRESS"]}]}]), "NOT_IMPLEMENTED"),
+            ("preselect_with_requests", dict(good, history_groups=[
+                {"schedule": {"type": "every_n_increments", "n": 1}, "mode": "preselect",
+                 "requests": good["history_groups"][0]["requests"]}, good["history_groups"][1]]),
+             "CONFIG_INVALID"),
+            ("requests_empty", dict(good, history_groups=[
+                {"schedule": {"type": "every_n_increments", "n": 1}, "requests": []},
+                good["history_groups"][1]]), "CONFIG_INVALID"),
+            ("bad_variable", dict(good, history_groups=[
+                {"schedule": {"type": "every_n_increments", "n": 1}, "requests": [
+                    {"kind": "node", "region": {"type": "node_set", "name": "RP_TOP"},
+                     "mode": "explicit", "variables": ["RF3, U3"]}]}]), "CONFIG_INVALID"),
+        )
+        for index, (name, payload, code) in enumerate(cases):
+            outputs_path = Path(self.td.name) / ("outputs_case_%d.json" % index)
+            atomic_json(outputs_path, payload)
+            with self.assertRaises(PipelineError, msg=name) as caught:
+                build_physical(self.npz, self.report, self.pairs_csv, self.physics,
+                               self.material, self.numerics, outputs_path, out)
+            self.assertEqual(caught.exception.code, code, name)
+        self.assertFalse(out.exists())
+
+    def test_outputs_missing_file_input_missing(self):
+        out = Path(self.td.name) / "missing_attempt"
+        with self.assertRaises(PipelineError) as caught:
+            build_physical(self.npz, self.report, self.pairs_csv, self.physics,
+                           self.material, self.numerics,
+                           Path(self.td.name) / "absent_outputs.json", out)
+        self.assertEqual(caught.exception.code, "INPUT_MISSING")
+        self.assertFalse(out.exists())
+
+    def test_outputs_empty_groups_not_implemented(self):
+        base_config = json.loads(self.outputs.read_text())
+        out = Path(self.td.name) / "empty_attempt"
+        for name, mutation in (("field", dict(base_config, field_groups=[])),
+                               ("history", dict(base_config, history_groups=[]))):
+            path = Path(self.td.name) / ("outputs_empty_%s.json" % name)
+            atomic_json(path, mutation)
+            with self.assertRaises(PipelineError, msg=name) as caught:
+                build_physical(self.npz, self.report, self.pairs_csv, self.physics,
+                               self.material, self.numerics, path, out)
+            self.assertEqual(caught.exception.code, "NOT_IMPLEMENTED", name)
+        self.assertFalse(out.exists())
+
+    def test_outputs_unknown_variable_allowed(self):
+        changed = json.loads(self.outputs.read_text())
+        changed["history_groups"][0]["requests"][1]["variables"] = ["RF3", "U3", "SDV_7"]
+        changed_path = Path(self.td.name) / "outputs_sdv.json"
+        atomic_json(changed_path, changed)
+        other = build_physical(self.npz, self.report, self.pairs_csv, self.physics,
+                               self.material, self.numerics, changed_path,
+                               Path(self.td.name) / "sdv")
+        self.assertIn("SDV_7", (Path(self.td.name) / "sdv/blocks/outputs.inc").read_text())
+        self.assertIn("SDV_7", other["blocks"]["outputs"]["requested_variables"][1]["variables"])
+
+    def test_outputs_provenance_whitespace(self):
+        base = self.build("wbase")
+        reformatted = Path(self.td.name) / "outputs_reformatted.json"
+        config = json.loads(self.outputs.read_text())
+        reformatted.write_text(json.dumps(config, indent=4) + "\n", encoding="utf-8")
+        other = build_physical(self.npz, self.report, self.pairs_csv, self.physics,
+                               self.material, self.numerics, reformatted,
+                               Path(self.td.name) / "reformatted")
+        self.assertNotEqual(base["outputs_config_sha256"], other["outputs_config_sha256"])
+        self.assertEqual(base["blocks"]["outputs"]["sha256"], other["blocks"]["outputs"]["sha256"])
+        self.assertEqual(base["build_key"], other["build_key"])
 
 
 if __name__ == "__main__":

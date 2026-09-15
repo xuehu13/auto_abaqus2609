@@ -46,6 +46,7 @@ def main():
     p.add_argument("--physics", default=str(ROOT / "config/physics.example.json"))
     p.add_argument("--material", default=str(ROOT / "config/materials/demo_surrogate.json"))
     p.add_argument("--numerics", default=str(ROOT / "config/numerics.example.json"))
+    p.add_argument("--outputs", default=str(ROOT / "config/outputs.example.json"))
     p.add_argument("--out", required=True)
     p = sub.add_parser("qa-history", help="Check a previously aligned history CSV; does not accept samples into a dataset")
     p.add_argument("--csv", required=True)
@@ -64,7 +65,7 @@ def main():
                                   "PBC representative equations", "shell/PBC include generation",
                                   "SQLite stage ledger primitives", "stagnation and diagnostic primitives",
                                   "aligned history curve QA",
-                                  "partial physical builder: material/section + rigid platens/control nodes + zero-valued platen BCs + baseline General Contact + Dynamic Implicit step/loading + manifest, no output requests, no complete physical.inp, no Abaqus validation"],
+                                  "partial physical builder: material/section + rigid platens/control nodes + platen BCs + General Contact + Dynamic Implicit step/loading + configurable output requests + manifest, no complete physical.inp, no Abaqus validation"],
                   "next": ["complete physical INP builder", "version-specific launcher and monitor",
                            "ODB contact/PBC/field extraction", "orchestration, reconciliation, acceptance and export"]}
     elif args.command == "prepare-mesher":
@@ -75,7 +76,7 @@ def main():
     elif args.command == "build-physical":
         from pipeline.physical_builder import build as build_physical
         result = build_physical(args.npz, args.report, args.pairs, args.physics,
-                                args.material, args.numerics, args.out)
+                                args.material, args.numerics, args.outputs, args.out)
     elif args.command == "qa-history":
         from pipeline.curve_qa import assess
         if Path(args.out).exists():

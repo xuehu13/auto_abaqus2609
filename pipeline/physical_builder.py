@@ -1,11 +1,11 @@
 """Physical build scaffold: reuse verified ingredients, own the manifest contract.
 
 BUILD only proves what is assembled here. This stage validates input and
-numerics contracts, reuses the frozen prepare-fe ingredients, renders the
-material/section, rigid-platen, boundary-condition and contact blocks and
-records the model identity. The remaining writer steps are still explicitly
-NOT_IMPLEMENTED, so a successful build leaves no physical.inp and claims no
-Abaqus validation.
+numerics/outputs contracts, reuses the frozen prepare-fe ingredients, renders
+the material/section, rigid-platen, boundary-condition, contact and
+step/output blocks and records the model identity. The remaining writer steps
+are still explicitly NOT_IMPLEMENTED, so a successful build leaves no
+physical.inp and claims no Abaqus validation.
 """
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ _BC_BLOCK = "boundary_conditions.inc"
 _CONTACT_BLOCK = "contact.inc"
 _STEP_LOADING_BLOCK = "step_loading.inc"
 _STEP_END_BLOCK = "step_end.inc"
+_OUTPUTS_BLOCK = "outputs.inc"
 _NUMERICS_REQUIRED = ("schema_version", "procedure", "application", "nlgeom",
                       "initial_acceleration_policy",
                       "initial_increment_s", "minimum_increment_s", "maximum_increment_s",
@@ -425,9 +426,164 @@ def _render_step_end():
     return "*End Step\n"
 
 
-def _render_outputs(physics, manifest):
-    """History/field output requests, each history variable keeping its own time axis."""
-    raise PipelineError("NOT_IMPLEMENTED", "Output request rendering is not implemented yet.")
+def _load_outputs(path):
+    """Load and validate the output request policy (Layer 1: ODB/restart writes).
+
+    Runs before the attempt directory is created, so an invalid outputs config
+    leaves no empty attempt. Only the Fig.1 baseline policy kinds are supported;
+    alternatives are valid Abaqus usage and fail as NOT_IMPLEMENTED. Variable
+    applicability is validated by Abaqus during the M2 physical data check and
+    region existence by M1-7 static validation.
+    """
+    outputs = read_json(path)
+    if not isinstance(outputs, dict):
+        raise PipelineError("CONFIG_INVALID", "outputs config must be an object.")
+    for key in ("schema_version", "profile_id", "restart", "field_groups", "history_groups"):
+        if key not in outputs:
+            raise PipelineError("CONFIG_INVALID", "outputs config lacks required key: " + key)
+    version = outputs["schema_version"]
+    if isinstance(version, bool) or not isinstance(version, int):
+        raise PipelineError("CONFIG_INVALID", "outputs schema_version must be an integer.")
+    if version != 1:
+        raise PipelineError("NOT_IMPLEMENTED",
+                            "Outputs schema version %s is structurally valid but this writer "
+                            "implements schema 1." % version)
+    if not isinstance(outputs["profile_id"], str) or not outputs["profile_id"].strip():
+        raise PipelineError("CONFIG_INVALID", "outputs profile_id must be a non-empty string.")
+    restart = outputs["restart"]
+    if not isinstance(restart, dict) or not isinstance(restart.get("policy"), str):
+        raise PipelineError("CONFIG_INVALID", "outputs.restart.policy must be a string.")
+    if restart["policy"] != "disabled":
+        raise PipelineError("NOT_IMPLEMENTED",
+                            "Restart policy " + repr(restart["policy"]) + " is valid Abaqus usage "
+                            "but this writer only implements the disabled baseline (frequency=0).")
+    for name in ("field_groups", "history_groups"):
+        if not isinstance(outputs[name], list):
+            raise PipelineError("CONFIG_INVALID", "outputs." + name + " must be a list.")
+    # Empty group lists must not silently fall back to Abaqus default output:
+    # "no explicit output request" re-enables procedure-specific PRESELECT.
+    # Disabling an output channel is a legitimate future policy that needs its
+    # own design and Data Check, so v1 refuses it as NOT_IMPLEMENTED.
+    if not outputs["field_groups"]:
+        raise PipelineError("NOT_IMPLEMENTED",
+                            "Empty field_groups are not yet supported as an explicit "
+                            "disabled-output policy; the writer must not rely on Abaqus default "
+                            "output. Design and validate a field-disable policy separately.")
+    if not outputs["history_groups"]:
+        raise PipelineError("NOT_IMPLEMENTED",
+                            "Empty history_groups are not yet supported as an explicit "
+                            "disabled-output policy; the writer must not rely on Abaqus default "
+                            "output. Design and validate a history-disable policy separately.")
+    for group in outputs["field_groups"]:
+        _validate_output_group(group, "field")
+    for group in outputs["history_groups"]:
+        _validate_output_group(group, "history")
+    return outputs
+
+
+def _validate_output_group(group, channel):
+    if not isinstance(group, dict):
+        raise PipelineError("CONFIG_INVALID", channel + " group must be an object.")
+    schedule = group.get("schedule")
+    if not isinstance(schedule, dict) or "type" not in schedule:
+        raise PipelineError("CONFIG_INVALID", channel + " group schedule must be an object with a type.")
+    if not isinstance(schedule["type"], str):
+        raise PipelineError("CONFIG_INVALID", "schedule type must be a string.")
+    if schedule["type"] != "every_n_increments":
+        raise PipelineError("NOT_IMPLEMENTED",
+                            "Output schedule " + repr(schedule["type"]) + " is valid Abaqus usage "
+                            "but this writer only implements every_n_increments; note that NUMBER "
+                            "INTERVAL with TIME MARKS can change increment placement, so alternative "
+                            "schedules are not treated as pure display parameters.")
+    n = schedule.get("n")
+    if isinstance(n, bool) or not isinstance(n, int) or n < 1:
+        raise PipelineError("CONFIG_INVALID", "schedule n must be an integer >= 1.")
+    mode = group.get("mode")
+    requests = group.get("requests")
+    if mode == "preselect":
+        if requests is not None:
+            raise PipelineError("CONFIG_INVALID", "A preselect group must not also define requests.")
+        return
+    if channel == "field":
+        raise PipelineError("NOT_IMPLEMENTED",
+                            "Explicit field output requests are valid Abaqus usage but this writer "
+                            "only implements the field PRESELECT baseline in v1.")
+    if mode not in (None, "explicit"):
+        raise PipelineError("CONFIG_INVALID", "history group mode " + repr(mode) + " is not part of "
+                            "outputs schema 1.")
+    if not isinstance(requests, list) or not requests:
+        raise PipelineError("CONFIG_INVALID", "An explicit history group needs a non-empty requests list.")
+    for request in requests:
+        _validate_output_request(request, channel)
+
+
+def _validate_output_request(request, channel):
+    if not isinstance(request, dict):
+        raise PipelineError("CONFIG_INVALID", channel + " request must be an object.")
+    kind = request.get("kind")
+    if not isinstance(kind, str):
+        raise PipelineError("CONFIG_INVALID", channel + " request kind must be a string.")
+    supported = ("energy", "node") if channel == "history" else ()
+    if kind not in supported:
+        raise PipelineError("NOT_IMPLEMENTED",
+                            "Output request kind " + repr(kind) + " is valid Abaqus usage but this "
+                            "writer only implements " + (", ".join(supported) or "none") + " in v1.")
+    if request.get("mode") != "explicit":
+        raise PipelineError("CONFIG_INVALID", channel + " request mode must be 'explicit' in v1.")
+    region = request.get("region")
+    if not isinstance(region, dict):
+        raise PipelineError("CONFIG_INVALID", channel + " request region must be an object.")
+    region_type = region.get("type")
+    if not isinstance(region_type, str) or not region_type.strip():
+        raise PipelineError("CONFIG_INVALID", "region.type must be a non-empty string.")
+    if kind == "energy" and region_type != "whole_model":
+        raise PipelineError("NOT_IMPLEMENTED",
+                            "Energy request region " + repr(region_type) + " is valid Abaqus usage "
+                            "but this writer only implements whole-model energy.")
+    if kind == "node" and region_type != "node_set":
+        raise PipelineError("NOT_IMPLEMENTED",
+                            "Node request region " + repr(region_type) + " is valid Abaqus usage "
+                            "but this writer only implements node_set regions in v1.")
+    name = region.get("name")
+    if region_type != "whole_model" and (
+            not isinstance(name, str) or not name.strip() or "\n" in name or "," in name):
+        raise PipelineError("CONFIG_INVALID",
+                            "region.name must be a non-empty string without newline or comma "
+                            "for this region type.")
+    variables = request.get("variables")
+    if not isinstance(variables, list) or not variables:
+        raise PipelineError("CONFIG_INVALID", "request variables must be a non-empty list.")
+    for variable in variables:
+        if not isinstance(variable, str) or not variable.strip() or "\n" in variable \
+                or "," in variable or variable.strip().startswith("*"):
+            raise PipelineError("CONFIG_INVALID",
+                                "output variables must be non-empty strings without newline/comma "
+                                "and must not start with '*': " + repr(variable))
+
+
+def _render_outputs(outputs):
+    """Render restart and field/history output requests (Layer 1: what is
+    written to the ODB/restart file). The group-oriented config maps one-to-one
+    onto *Output groups; PRESELECT is a group-level mode, not a request kind.
+    The Dynamic omitted history PRESELECT frequency is rendered explicitly as
+    its documented direct-INP effective default (every 10 increments). No
+    extraction, dataset or visualization logic belongs here.
+    """
+    lines = ["*Restart, write, frequency=0"]
+    for group in outputs["field_groups"]:
+        lines.append("*Output, field, variable=PRESELECT, frequency=%d" % group["schedule"]["n"])
+    for group in outputs["history_groups"]:
+        if group.get("mode") == "preselect":
+            lines.append("*Output, history, variable=PRESELECT, frequency=%d" % group["schedule"]["n"])
+            continue
+        lines.append("*Output, history, frequency=%d" % group["schedule"]["n"])
+        for request in group["requests"]:
+            if request["kind"] == "energy":
+                lines.append("*Energy Output")
+            else:
+                lines.append("*Node Output, nset=%s" % request["region"]["name"])
+            lines.append(", ".join(request["variables"]))
+    return "\n".join(lines) + "\n"
 
 
 def _assemble_physical_inp(sections, output):
@@ -440,15 +596,25 @@ def _validate_static_model(folder, manifest):
     raise PipelineError("NOT_IMPLEMENTED", "Static model validation is not implemented yet.")
 
 
-def build(npz, report, pairs, physics_path, material_path, numerics_path, output):
+def build(npz, report, pairs, physics_path, material_path, numerics_path, outputs_path, output):
     """Validate contracts, reuse prepare-fe ingredients and write the partial build manifest.
 
     Input and numerics errors are raised before the attempt directory is created,
     so simple mistakes leave no empty attempts. Failures inside the real
     ingredient preparation keep the attempt as evidence.
     """
-    _require_inputs((npz, report, pairs, physics_path, material_path, numerics_path))
+    _require_inputs((npz, report, pairs, physics_path, material_path, numerics_path, outputs_path))
     numerics = _load_numerics(numerics_path)
+    outputs = _load_outputs(outputs_path)
+    required_regions = []
+    requested_variables = []
+    for group in outputs["history_groups"]:
+        for request in group.get("requests", []):
+            if request["region"]["type"] == "node_set":
+                required_regions.append(request["region"]["name"])
+            requested_variables.append({"region": request["region"].get("name", request["region"]["type"]),
+                                        "kind": request["kind"],
+                                        "variables": list(request["variables"])})
     folder = reserve_directory(output)
     ingredients = folder / "ingredients"
     prepare_ingredients(npz, report, pairs, physics_path, material_path, ingredients)
@@ -469,6 +635,8 @@ def build(npz, report, pairs, physics_path, material_path, numerics_path, output
     step_loading_sha = file_hash(blocks_dir / _STEP_LOADING_BLOCK)
     atomic_text(blocks_dir / _STEP_END_BLOCK, _render_step_end())
     step_end_sha = file_hash(blocks_dir / _STEP_END_BLOCK)
+    atomic_text(blocks_dir / _OUTPUTS_BLOCK, _render_outputs(outputs))
+    outputs_block_sha = file_hash(blocks_dir / _OUTPUTS_BLOCK)
     scaffold_key = digest({"model_key": model_inputs["model_key"], "numerics": numerics,
                            "numerics_sha256": file_hash(numerics_path), "builder": _BUILDER_ID})
     manifest = {
@@ -482,7 +650,8 @@ def build(npz, report, pairs, physics_path, material_path, numerics_path, output
                                         "boundary_conditions": bc_block_sha,
                                         "contact": contact_block_sha,
                                         "step_loading": step_loading_sha,
-                                        "step_end": step_end_sha}}),
+                                        "step_end": step_end_sha,
+                                        "outputs": outputs_block_sha}}),
         "identity": {"model_key": model_inputs["model_key"],
                      "physics_profile_id": model_inputs["physics"].get("profile_id"),
                      "material_id": model_inputs["material"].get("material_id"),
@@ -493,6 +662,8 @@ def build(npz, report, pairs, physics_path, material_path, numerics_path, output
         "material": model_inputs["material"],
         "numerics": numerics,
         "numerics_sha256": file_hash(numerics_path),
+        "outputs": outputs,
+        "outputs_config_sha256": file_hash(outputs_path),
         "L_mm": model_inputs["L_mm"],
         "A0_mm2": model_inputs["A0_mm2"],
         "surface_area_mm2": model_inputs["surface_area_mm2"],
@@ -576,17 +747,31 @@ def build(npz, report, pairs, physics_path, material_path, numerics_path, output
                 "quasi_static_status": "pending_qa"},
             "step_end": {
                 "path": "blocks/" + _STEP_END_BLOCK, "sha256": step_end_sha,
-                "keyword": "*End Step"}},
+                "keyword": "*End Step"},
+            "outputs": {
+                "path": "blocks/" + _OUTPUTS_BLOCK, "sha256": outputs_block_sha,
+                "profile_id": outputs["profile_id"],
+                "restart_policy": outputs["restart"]["policy"],
+                "field_group_count": len(outputs["field_groups"]),
+                "history_group_count": len(outputs["history_groups"]),
+                "schedule_policy": "every_n_increments",
+                "required_regions": required_regions,
+                "requested_variables": requested_variables,
+                "source_policy": "fig1 hand baseline output policy; the Dynamic omitted history "
+                                 "PRESELECT frequency is rendered explicitly as 10 based on the "
+                                 "Abaqus/Standard direct-INP documented default. Keyword semantics "
+                                 "reproduced only; automatic-model ODB sampling is validated by the "
+                                 "M2 physical data check."}},
         "implemented_stages": ["input contract checks", "numerics contract checks",
                                "ingredient reuse from prepare-fe", "model manifest",
                                "material/section block rendering",
                                "rigid platens/reference points block rendering",
                                "boundary conditions block rendering",
                                "contact block rendering",
-                               "step and loading block rendering"],
-        "missing_stages": ["output requests",
-                           "physical.inp assembly", "static model validation", "physical datacheck",
-                           "solve", "ODB QA"],
+                               "step and loading block rendering",
+                               "output request block rendering"],
+        "missing_stages": ["physical.inp assembly", "static model validation",
+                           "physical datacheck", "solve", "ODB QA"],
         "dataset_eligible": False,
         "warning": "Partial physical build: keyword blocks are rendered but no physical.inp is "
                    "assembled and no Abaqus validation was performed.",
