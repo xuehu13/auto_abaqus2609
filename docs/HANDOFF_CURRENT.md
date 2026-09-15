@@ -151,13 +151,19 @@ Layer 4 Visualization Policy   曲线/云图/动画/论文图      ← postproce
 - `physical_regions.json` / `physical_raw_history.json`（20% ODB 提取实证）
 - 各 M1 smoke attempts（`work/fig1_build_*`）
 
-## 13. reference PDF 约定
+## 13. Conversation / reference archive policy
 
-计划在本次会话结束后由用户本地归档为：
-`reference/2026-09-15_chatgpt_auto_abaqus_M1-6_checkpoint_full_conversation.pdf`
+本次 M1-6 开发对话**不另行保存为 reference PDF**。
 
-**截至本 handoff commit，该 PDF 尚未由本项目代码/GLM 创建；其存在性不能作为 Git checkout 的前提。**
-如果用户之后实际保存了该 PDF，它只是 Git-ignored local evidence / conversation archive，**不是代码真值**。正式工程状态以 Git docs + source + tests 为准。
+未来接管不得依赖旧 ChatGPT / GLM 对话记录；当前工程状态的正式真值顺序是：
+
+1. current Git state / source / tests
+2. `AGENTS.md`
+3. `docs/HANDOFF_CURRENT.md`
+4. ROADMAP / PROJECT_STATUS / IMPLEMENTATION_PLAN / IMPLEMENTATION_STATUS
+5. 用户明确的新指令
+
+`reference/` 仍然是 Git-ignored local evidence 区；以后只有用户明确需要时才新增独立参考资料。其内容不是仓库真值，也不能成为新机器 clone 后继续开发的必要依赖。
 
 ## 14. 下一步
 
