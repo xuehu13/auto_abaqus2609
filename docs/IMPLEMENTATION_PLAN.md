@@ -46,7 +46,7 @@ Physical Data Check 检查完整材料/截面/刚体/约束/接触定义；用�
 
 退出标准：新自动模型有独立 Physical Data Check 完成证据；无未解释的严重初始化/约束问题；报告有具体节点/面/关键词定位。通过不代表30%必然可解。
 
-## 阶段 D：单曲面求解、ODB、QA 闭环
+## 阶段 D：单曲面求解、ODB、QA 闭环（**2026-09-15 更新：M3 已完成——Fig.1 20% validation case 自动求解通过，`work/fig1_solve_m3_20pct_003`，SOLVE_COMPLETED_WITH_WARNINGS，完整 ODB**；30% 验收、ODB 提取与 QA 仍按本节执行）
 
 先建立最小可控单作业 launcher：已验证 bat 引用/退出码处理、唯一工作目录、超时观察、正确进程归属和温和终止。不得启动长程任务却没有停止/留证方案。
 

@@ -22,7 +22,7 @@ def main():
     if (os.environ.get("PIXI_ENVIRONMENT_NAME") != "default" or not prefix
             or Path(prefix).resolve() != Path(sys.prefix).resolve()):
         raise PipelineError("PIXI_REQUIRED", "Use pixi run cli <command> from the workspace; system Python is unsupported.")
-    parser = argparse.ArgumentParser(description="DiffuMeta v0.1 architecture and preparation tools (no production solve command yet)")
+    parser = argparse.ArgumentParser(description="DiffuMeta pipeline tools (no batch orchestration yet; solve runs one accepted job)")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("plan", help="Print the complete planned pipeline and implementation status")
     p = sub.add_parser("prepare-mesher", help="Create a private mesher directory and exact command plan; do not execute it")
@@ -55,6 +55,13 @@ def main():
     p.add_argument("--job-name", default="fig1_m2_datacheck")
     p.add_argument("--cpus", type=int, help="Data Check execution policy override; default order: config/datacheck_runtime.local.json -> safe default cpus=1")
     p.add_argument("--standard-parallel", help="Data Check execution policy override (all|solver); default order: config/datacheck_runtime.local.json -> safe default standard_parallel=solver")
+    p = sub.add_parser("solve", help="Stage an accepted M2 datacheck attempt and run one real Abaqus/Standard analysis; no ODB extraction")
+    p.add_argument("--datacheck-dir", required=True)
+    p.add_argument("--out", required=True)
+    p.add_argument("--abaqus-command", help="Explicit Abaqus launcher; default order: environment.local.json abaqus_launcher -> PATH abaqus -> PATH abq2026")
+    p.add_argument("--job-name", default="fig1_m3_solve")
+    p.add_argument("--cpus", type=int, help="Solve execution policy override; default order: config/solve_runtime.local.json -> safe default cpus=1")
+    p.add_argument("--standard-parallel", help="Solve execution policy override (all|solver); default order: config/solve_runtime.local.json -> safe default standard_parallel=solver")
     p = sub.add_parser("qa-history", help="Check a previously aligned history CSV; does not accept samples into a dataset")
     p.add_argument("--csv", required=True)
     p.add_argument("--height-mm", type=float, required=True)
@@ -72,12 +79,15 @@ def main():
                                   "PBC representative equations", "shell/PBC include generation",
                                   "SQLite stage ledger primitives", "stagnation and diagnostic primitives",
                                   "aligned history curve QA",
-                                  "complete physical builder (M1): ingredients + material/section + rigid "
-                                  "platens/control nodes + platen BCs + General Contact + Dynamic Implicit "
-                                  "step/loading + configurable output requests + physical.inp assembly with "
-                                  "repository static validation (build_report), no Abaqus invocation"],
-                  "next": ["M2 physical data check: version-specific Abaqus launcher and monitor",
-                           "single-job solve and ODB contact/PBC/field extraction",
+                                  "M1 complete physical builder: physical.inp assembly with repository "
+                                  "static validation, no Abaqus invocation",
+                                  "M2 physical data check: accepted-deck staging, real Abaqus datacheck "
+                                  "invocation, diagnostics and structured report (Fig.1 passed with "
+                                  "warnings)",
+                                  "M3 single-job solve: accepted-deck staging, real Abaqus/Standard "
+                                  "analysis invocation, completion evidence (.sta/stdout/target step "
+                                  "time), structured solve report"],
+                  "next": ["M4 ODB automatic extraction (results QA follows)",
                            "orchestration, reconciliation, acceptance and export"]}
     elif args.command == "prepare-mesher":
         result = prepare_mesher(args.vendor, args.case, args.environment, args.out, args.cgal_build)
@@ -92,6 +102,10 @@ def main():
         from pipeline.physical_datacheck import run_datacheck
         result = run_datacheck(args.build_dir, args.out, args.abaqus_command, args.job_name,
                                cpus=args.cpus, standard_parallel=args.standard_parallel)
+    elif args.command == "solve":
+        from pipeline.physical_solve import run_solve
+        result = run_solve(args.datacheck_dir, args.out, args.abaqus_command, args.job_name,
+                           cpus=args.cpus, standard_parallel=args.standard_parallel)
     elif args.command == "qa-history":
         from pipeline.curve_qa import assess
         if Path(args.out).exists():
@@ -117,8 +131,9 @@ def main():
     if isinstance(result, dict) and result.get("status") == "CURVE_QA_FAILED":
         return 3
     if isinstance(result, dict) and result.get("status") in (
-            "DATACHECK_FAILED", "DATACHECK_COMPLETED_WITH_WARNINGS"):
-        return 3  # Non-clean datacheck: report is written, exit code signals review needed.
+            "DATACHECK_FAILED", "DATACHECK_COMPLETED_WITH_WARNINGS",
+            "SOLVE_FAILED", "SOLVE_COMPLETED_WITH_WARNINGS"):
+        return 3  # Non-clean stage result: report is written, exit code signals review needed.
     return 0
 
 

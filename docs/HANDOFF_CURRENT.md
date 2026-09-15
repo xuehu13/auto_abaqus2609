@@ -45,7 +45,8 @@ Fig.1、论文参数、手工模型只是当前 validation baseline/profile。�
 | M1-6 output requests | DONE |
 | M1-7 assembly/static validation | DONE（2026-09-15） |
 | M2 Physical Data Check | **DONE（2026-09-15，COMPLETED_WITH_WARNINGS：Fig.1 自动 physical.inp 通过真实 Abaqus 2026 Data Check，0 error / 10 warnings 保留）** |
-| M3 solve / M4 ODB extraction | NOT STARTED |
+| M3 solve（single case, 20% Fig.1） | **DONE（2026-09-15，COMPLETED_WITH_WARNINGS：真实 Abaqus/Standard 求解完成，target step time 达标，完整 ODB）** |
+| M4 ODB extraction / mechanics QA | NOT STARTED |
 
 ## 4. 当前 physical builder 产物
 
@@ -135,12 +136,13 @@ Layer 4 Visualization Policy   曲线/云图/动画/论文图      ← postproce
 4. PRESELECT-only 自动 ODB 采样：仅 keyword semantics reproduced，M2 后用真实自动模型 ODB 复核。
 5. restart ownership：当前属 outputs 写盘策略；runtime/recovery 成熟后再评估迁移。
 6. demo material：non-production surrogate，不是论文真实材料。
-7. **Physical Data Check 尚未执行**；static validator 是面向本项目确定性关键词形式的小型解析器，不是通用 Abaqus INP parser。
+7. ~~Physical Data Check 尚未执行~~ **已执行并通过**（2026-09-15，Fig.1，COMPLETED_WITH_WARNINGS）；static validator 是面向本项目确定性关键词形式的小型解析器，不是通用 Abaqus INP parser。
 其余债务见 `docs/IMPLEMENTATION_PLAN.md` 技术债段与 `docs/PROJECT_STATUS.md` 差异清单（引用，不复述）。
 
 ## 12. Local evidence（不进 Git）
 
 `work/` 与 `reference/` 均为 Git-ignored local-only，新机器 clone 后**可能不存在**：
+- `work/fig1_solve_m3_20pct_003/`（M3 真实 20% solve：SOLVE_COMPLETED_WITH_WARNINGS，returncode=0，0 error/17 warning，完整 ODB 16,075,836 bytes）
 - `work/fig1_datacheck_m2_final_001/`（M2 正式 CLI 验证：DATACHECK_COMPLETED_WITH_WARNINGS，returncode=0，0 error/10 warning，execution_policy=cpus=1 solver via local_environment）
 - `work/fig1_datacheck_m2_diagnostics_summary.json`（M1 环境解堵 10-attempt 诊断链：standard_parallel=all 的可复现 pre 失败与 solver-mode 绕过）
 - `work/fig1_build_m17_smoke_001/`（M1-7 真实 Fig.1 build smoke：physical.inp + build_report.json，13/13 checks PASS）
@@ -189,9 +191,15 @@ solve = NOT_RUN / odb_results_qa = NOT_RUN / dataset_eligible = false
 5. **M3 Solve execution policy = TO BE VALIDATED**。候选 profile：`cpus=4, standard_parallel=solver`（element ops 串行、solver 4 CPU 并行），但必须单独实验验证，不得自动继承 Data Check policy。
 6. **Machine capability probe（Abaqus release/CPU/parallel modes/小型 datacheck 能力缓存）**：NOT IMPLEMENTED，未来需要时再设计。
 
-## 15. 下一步
+## 15. M3 result 与下一步
 
-**M2 = DONE（COMPLETED_WITH_WARNINGS）。** 下一工程 milestone 是 **M3 single-case real solve**：先按 14.2.5 验证 Solve execution profile（候选 `cpus=4, standard_parallel=solver`），再对同一 Fig.1 case 从 datacheck 走到正式求解与完成判定。M2 的 10 条 warning 作为 M3/M4 QA 的强制输入。
+**M3 = DONE（COMPLETED_WITH_WARNINGS，20% validation case）。** 链路：同一真实 Fig.1 mesh bundle + local 20% physics config（唯一差异 `target_compression_strain 0.3→0.2`）→ `build-physical`（`work/fig1_build_m3_20pct_001`，PHYSICAL_INP_STATIC_VALIDATED，target U3=-2.0mm）→ `datacheck`（`work/fig1_datacheck_m3_20pct_001`，0 error/10 warnings）→ `solve`（`work/fig1_solve_m3_20pct_003`）。
+
+真实 Solve 结果（`solve_report.json`）：returncode=0、`Abaqus JOB fig1_m3_solve COMPLETED`、`.sta: THE ANALYSIS HAS COMPLETED SUCCESSFULLY`、last_step=1/last_increment=59/last_step_time=1.00=target、0 fatal error、17 warnings（含 M2 的 10 条继承 warning，全部保留未白名单）、完整 ODB 16,075,836 bytes。execution policy：`cpus=4, standard_parallel=solver`（local solve_runtime 配置，本机候选 profile）。
+
+**Scope**：M3 只证明自动提交+完成判定+完整 ODB；未读取 ODB、未提取曲线、未做准静态/接触/PBC 科学判断。M2 的 10 条 warning 与 solve 的 17 条 warning 是 M4 mechanics/contact QA 的强制输入。
+
+**下一步 = M4 ODB 自动提取与结果 QA**（含 30% 验收、准静态判定）。
 
 ## 16. 下一阶段明确禁止
 

@@ -1,6 +1,6 @@
 # DiffuMeta Automation
 
-Abaqus 周期性多孔表面网格自动化与压缩仿真数据流水线：把冻结的 `periodic_surface_mesher v1.0` 网格模块和手工 Abaqus 物理模型接成可管理的批量系统。当前 v0.1 已实现：隔离网格准备、FE 输入片段、完整物理 `physical.inp` 自动装配（仓库级静态验证）、**真实 Abaqus 2026 Physical Data Check（Fig.1 已通过：0 error / 10 warnings 保留，`COMPLETED_WITH_WARNINGS`）**、曲线 QA 与状态账本基础。M3 solve 尚未开始（其 execution policy 待单独验证）；开发机 runtime 事实与跨机器配置见 `docs/HANDOFF_CURRENT.md` 与 `config/datacheck_runtime.example.json`。
+Abaqus 周期性多孔表面网格自动化与压缩仿真数据流水线：把冻结的 `periodic_surface_mesher v1.0` 网格模块和手工 Abaqus 物理模型接成可管理的批量系统。当前 v0.1 已实现：隔离网格准备、FE 输入片段、完整物理 `physical.inp` 自动装配（仓库级静态验证）、**真实 Abaqus 2026 Physical Data Check（Fig.1：0 error / 10 warnings 保留）**、**单作业真实求解（Fig.1 20% validation case：`SOLVE_COMPLETED_WITH_WARNINGS`，完整 ODB）**、曲线 QA 与状态账本基础。M4 ODB 提取尚未开始；runtime profile 配置见 `config/datacheck_runtime.example.json` 与 `config/solve_runtime.example.json`，跨机器注意事项见 `docs/HANDOFF_CURRENT.md`。
 
 ## 环境：Pixi 是唯一普通环境管理器
 
@@ -22,6 +22,7 @@ pixi run mesh-pre / mesh-post / mesh-check --out work/<新attempt> [--from-attem
 pixi run build-cgal --check-only        # 编译工具链检查；实际构建需 --out
 pixi run cli build-physical --npz ... --report ... --pairs ... --out work/<新attempt>
 pixi run cli datacheck --build-dir work/<M1 build> --out work/<新attempt>   # 真实 Abaqus Physical Data Check；不 solve
+pixi run cli solve --datacheck-dir work/<M2 attempt> --out work/<新attempt> # 真实 Abaqus/Standard analysis；不提取 ODB
 ```
 
 每次输出必须使用新的 `work/<attempt>` 目录，拒绝覆盖。
@@ -172,4 +173,4 @@ abaqus python abaqus_worker/export_history.py --odb F:/your_case/job.odb --out F
 
 ## 8. 接下来实际开发什么
 
-M1（writer）与 M2（Physical Data Check）均已完成：Fig.1 自动 `physical.inp` 已被真实 Abaqus 2026 Data Check 接受（0 error / 10 warnings 保留）。下一工程 milestone 是 **M3 single-case real solve**：先单独验证 Solve execution profile（候选 `cpus=4, standard_parallel=solver`；不得自动继承 Data Check policy），再把同一 Fig.1 case 从 datacheck 走到正式求解、ODB 提取与质量检查（M2 的 10 条 warning 是 M3/M4 QA 的强制输入）。每一步的明确验收标准已经写入完整方案，避免重复设计。
+M1（writer）、M2（Physical Data Check）、M3（single-job real solve，Fig.1 20% validation case）均已完成并经真实 Abaqus 2026 验证。下一工程 milestone 是 **M4 ODB 自动提取与结果 QA**：用 Abaqus Python/odbAccess 从 `work/fig1_solve_m3_20pct_003` 的完整 ODB 提取 history/field，随后做 30% 验收、准静态判定、接触/PBC/能量检查（M2 的 10 条 warning 与 solve 的 17 条 warning 是该阶段 QA 的强制输入）。每一步的明确验收标准已经写入完整方案，避免重复设计。

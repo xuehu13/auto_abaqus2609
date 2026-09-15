@@ -1,6 +1,6 @@
 # v0.1 实施状态与后续接口
 
-## M1/M2 进度（M1-1..M1-7 checkpoint 2026-09-15 → M1 BUILD complete；M2 checkpoint 2026-09-15 → **M2 DONE, COMPLETED_WITH_WARNINGS**）
+## M1/M2/M3 进度（M1 checkpoint 2026-09-15 → BUILD complete；M2 checkpoint 2026-09-15 → COMPLETED_WITH_WARNINGS；M3 checkpoint 2026-09-15 → **M3 DONE, COMPLETED_WITH_WARNINGS**）
 
 ### M1-1 已完成：physical builder scaffold
 - `pipeline/physical_builder.py` 与 `run.py build-physical` CLI（Pixi default 守卫不变，现有命令语义未改）。
@@ -70,6 +70,14 @@
 - **Runtime portability 原则**：execution policy 是 machine/runtime-local 配置，只进命令行与 datacheck provenance，永不进入 physical.inp 或 model_key/scaffold_key/build_key；同一 physical.inp 可在不同机器用不同 execution profile。M3 Solve execution policy = TO BE VALIDATED（候选 `cpus=4, standard_parallel=solver`），不得自动继承 Data Check policy。
 - **真实 Fig.1 Data Check 最终结果**（正式 CLI，`work/fig1_datacheck_m2_final_001`，physical.inp SHA `AD93E91B…` 与 M1 manifest 一致）：**returncode=0、`ANALYSIS DATACHECK COMPLETE`、0 error、10 warnings**（1× General Contact double-sided facets、1× STRAINFREE adjustment ratio 2.55e-2 @ node 544、8× ADJACENT SECONDARY NODES opposite sides of double-sided main surface——与手工 20% baseline 诊断签名一致）→ `status=DATACHECK_COMPLETED_WITH_WARNINGS`。**M2 = DONE。**
 - 开发机 runtime 事实（reproducible machine/runtime-specific failure，谨慎表述）：默认 `standard_parallel=all` 在 General Contact preprocessing 触发 `***ERROR: EXCEEDED THE MAXIMUM AMOUNT OF THREADS TO BE USED PER DOMAIN (<=100)`（手工 baseline 同样失败；cpus/reqcpus/env 变量均排除；10-attempt 诊断链见 `work/fig1_datacheck_m2_diagnostics_summary.json`）；`standard_parallel=solver` 绕过该路径。其他机器不得自动假设需要同样 workaround。
+
+### M3 已完成（2026-09-15，COMPLETED_WITH_WARNINGS）：Single-Job Real Solve
+- 新增 `pipeline/physical_solve.py`（窄职责）：accepted M2 datacheck attempt 校验（status ∈ {DATACHECK_PASSED, DATACHECK_COMPLETED_WITH_WARNINGS}、error_count=0、solve=NOT_RUN、dataset_eligible=false、physical.inp SHA 对 datacheck report）→ SHA 双向校验 staging（deck + includes + source datacheck/manifest/build provenance）→ launcher resolution（与 M2 相同优先级）→ **solve runtime policy 解析（CLI `--cpus/--standard-parallel` → `config/solve_runtime.local.json` → safe default `cpus=1, standard_parallel=solver`；非法值 → CONFIG_INVALID）** → stdout/stderr 直接流式写入 attempt 文件（长作业不占内存）→ `abaqus job=<name> input=physical.inp analysis interactive cpus=<n> standard_parallel=<mode>`（无 datacheck/continue/recover）→ 完成判定（returncode + stdout `Abaqus JOB … COMPLETED` + `.sta: THE ANALYSIS HAS COMPLETED SUCCESSFULLY` + fatal 诊断 + required artifacts（.dat/.msg/.sta/.odb）+ **target step time 达标**，绝不只看 return code）→ `.sta` 窄解析器（成功增量行：last_step/last_increment/last_step_time/increment_count；cutback 'U' 行跳过；真实 10 列三时间列格式有回归测试）→ `solve_report.json`（M2 warning 继承 provenance；claims: odb_exists、odb_results_qa=NOT_RUN、mechanics_qa=NOT_RUN、dataset_eligible=false 恒定）。
+- CLI：`pixi run cli solve --datacheck-dir <M2 attempt> --out <新attempt> [--abaqus-command] [--job-name] [--cpus] [--standard-parallel]`；非完成状态退出码 3。
+- **Runtime portability**：solve runtime policy 与模型完全分离，不进 physical.inp/identity keys；不得自动继承 M2 datacheck profile；M3 性能策略待单独验证。
+- 测试：新增 23 个 M3 回归测试（mock subprocess/release；覆盖 source 校验、staging、policy、命令契约、失败证据、三态判定、claims、attempt 保护、真实 .sta 格式回归）；总计 **138 core + 8 boundary 全过**。
+- **真实 20% solve 结果**（`work/fig1_solve_m3_20pct_003`，job=fig1_m3_solve，cpus=4 + standard_parallel=solver via local_environment）：**SOLVE_COMPLETED_WITH_WARNINGS**——returncode=0、stdout 完成 token、`.sta: THE ANALYSIS HAS COMPLETED SUCCESSFULLY`、last_step=1/last_increment=59/last_step_time=1.00=目标、0 error、17 warnings（含 M2 继承 10 条，全部保留）、完整 ODB 16,075,836 bytes。20% 目标为 validation profile（local config，唯一差异 strain 0.3→0.2），不是科研硬编码。
+- 诊断记录：第一次真实 solve（`work/fig1_solve_m3_20pct_001`）因 **M3 .sta parser bug**（真实 10 列三时间列格式未解析）误判 SOLVE_FAILED，bug 修复 + 回归测试后以新 attempt 003 验证；`work/fig1_solve_m3_20pct_002` 为误触发的重复运行，已终止并保留为证据。
 
 ## 已实现且经过本地逻辑验证
 

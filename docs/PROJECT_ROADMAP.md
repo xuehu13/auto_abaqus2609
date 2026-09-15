@@ -436,11 +436,13 @@ resources
 
 当前唯一主目标：
 
-# M1：完成完整 Physical INP Writer
+# M3：单作业真实求解
+
+M1/M2/M3 均已完成（2026-09-15）：Fig.1 自动 physical.inp 通过真实 Abaqus 2026 Data Check（COMPLETED_WITH_WARNINGS）并完成真实 20% 自动求解（`work/fig1_solve_m3_20pct_003`：SOLVE_COMPLETED_WITH_WARNINGS，target step time 达标，完整 ODB）。下一目标：**M4 ODB 自动提取与结果 QA**。30% 压缩验收、准静态判定与接触/PBC 科学检查属于 M4/后续阶段。
 
 暂不扩大问题范围。
 
-M1 完成并通过真实 Abaqus Physical Data Check 后，再进入 M2/M3。
+M1/M2/M3 已完成并通过真实 Abaqus 验证后，下一阶段进入 M4 ODB 提取与结果 QA。
 
 ---
 

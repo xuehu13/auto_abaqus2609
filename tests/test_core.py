@@ -9,6 +9,7 @@ from unittest import mock
 import numpy as np
 
 from pipeline import physical_datacheck as pdc
+from pipeline import physical_solve as pds
 from pipeline.common import PipelineError, atomic_json, file_hash, tree_hash
 from pipeline.curve_qa import assess, TARGETS
 from pipeline.diagnostics import classify_messages, completion_evidence, stagnation
@@ -1591,6 +1592,307 @@ class PhysicalDataCheckTests(_BuilderFixtureMixin, unittest.TestCase):
         with self.assertRaises(PipelineError) as caught:
             self._run_m2(source, out, "ANALYSIS DATACHECK COMPLETE",
                          "Abaqus JOB fig1_m2_datacheck COMPLETED")
+        self.assertEqual(caught.exception.code, "OUTPUT_EXISTS")
+        self.assertEqual((out / "sentinel.txt").read_text(), "keep")
+
+
+class PhysicalSolveTests(_BuilderFixtureMixin, unittest.TestCase):
+    """M3 regression: accepted-deck staging, runtime policy and solve judgement.
+
+    No test invokes a real Abaqus; the analysis subprocess and release query are
+    mocked, and completion evidence comes from small fixture files.
+    """
+
+    JOB = "fig1_m3_solve"
+    _STA_OK = ("   1     1   1     0     1     1     1   0.000E+00   2.500E-02\n"
+               "   1    40   1     0     2     2     2   9.999E-01   1.000E+00\n"
+               " THE ANALYSIS HAS COMPLETED SUCCESSFULLY\n")
+    _DC_DAT = ("***WARNING: the general contact domain has double-sided facets\n"
+               "ANALYSIS DATACHECK COMPLETE\n")
+    _DC_LOG = "Abaqus JOB fig1_m2_datacheck COMPLETED\n"
+
+    def _fake_launcher(self):
+        launcher = Path(self.td.name) / "fake_abaqus.bat"
+        if not launcher.exists():
+            launcher.write_text("@echo off\r\n", encoding="ascii")
+        return str(launcher)
+
+    def _run_datacheck(self, source, out):
+        def fake_dc(argv, cwd, timeout_s):
+            cwd = Path(cwd)
+            (cwd / "fig1_m2_datacheck.dat").write_text(self._DC_DAT, encoding="utf-8")
+            (cwd / "fig1_m2_datacheck.odb").write_bytes(b"fake dc odb")
+            return 0, self._DC_LOG, ""
+
+        with mock.patch("pipeline.physical_datacheck._run_process", fake_dc), \
+                mock.patch("pipeline.physical_datacheck.query_release",
+                           return_value={"release": "Abaqus 2026 TEST", "return_code": 0}):
+            return pdc.run_datacheck(source, out, abaqus_command=self._fake_launcher(),
+                                     policy_path=Path(self.td.name) / "no_policy.json")
+
+    def _make_accepted(self, name):
+        source = Path(self.td.name) / ("src_" + name)
+        build_physical(self.npz, self.report, self.pairs_csv, self.physics,
+                       self.material, self.numerics, self.outputs, source)
+        dc_dir = Path(self.td.name) / ("dc_" + name)
+        self._run_datacheck(source, dc_dir)
+        return dc_dir
+
+    def _run_solve(self, dc, out, dat="", msg="", sta=_STA_OK, returncode=0,
+                   stdout_completed=True, **kwargs):
+        def fake_solve(argv, cwd, timeout_s, stdout_path, stderr_path):
+            cwd = Path(cwd)
+            (cwd / (self.JOB + ".dat")).write_text(dat, encoding="utf-8")
+            (cwd / (self.JOB + ".msg")).write_text(msg, encoding="utf-8")
+            if sta is not None:
+                (cwd / (self.JOB + ".sta")).write_text(sta, encoding="utf-8")
+            (cwd / (self.JOB + ".odb")).write_bytes(b"fake complete odb")
+            text = ("Abaqus JOB " + self.JOB + " COMPLETED\n" if stdout_completed
+                    else "Abaqus JOB " + self.JOB + " aborted\n")
+            Path(stdout_path).write_text(text, encoding="utf-8")
+            Path(stderr_path).write_text("", encoding="utf-8")
+            return returncode
+
+        kwargs.setdefault("policy_path", Path(self.td.name) / "no_policy.json")
+        with mock.patch("pipeline.physical_solve._run_process_to_files", fake_solve), \
+                mock.patch("pipeline.physical_solve.query_release",
+                           return_value={"release": "Abaqus 2026 TEST", "return_code": 0}):
+            return pds.run_solve(dc, out, abaqus_command=self._fake_launcher(), **kwargs)
+
+    # Source datacheck preconditions (1-3).
+    def test_non_accepted_datacheck_status_rejected(self):
+        dc = self._make_accepted("bad_status")
+        report_path = dc / "datacheck_report.json"
+        report = json.loads(report_path.read_text())
+        report["status"] = "DATACHECK_FAILED"
+        atomic_json(report_path, report)
+        with self.assertRaises(PipelineError) as caught:
+            pds.run_solve(dc, Path(self.td.name) / "never",
+                          abaqus_command=self._fake_launcher())
+        self.assertEqual(caught.exception.code, "SOURCE_DATACHECK_INVALID")
+
+    def test_datacheck_with_errors_rejected(self):
+        dc = self._make_accepted("dc_errors")
+        report_path = dc / "datacheck_report.json"
+        report = json.loads(report_path.read_text())
+        report["diagnostics"]["error_count"] = 1
+        atomic_json(report_path, report)
+        with self.assertRaises(PipelineError) as caught:
+            pds.run_solve(dc, Path(self.td.name) / "never",
+                          abaqus_command=self._fake_launcher())
+        self.assertEqual(caught.exception.code, "SOURCE_DATACHECK_INVALID")
+
+    def test_physical_inp_sha_mismatch_rejected(self):
+        dc = self._make_accepted("sha_mismatch")
+        with (dc / "physical.inp").open("a", encoding="utf-8") as stream:
+            stream.write("** tampered\n")
+        with self.assertRaises(PipelineError) as caught:
+            pds.run_solve(dc, Path(self.td.name) / "never",
+                          abaqus_command=self._fake_launcher())
+        self.assertEqual(caught.exception.code, "SOURCE_DATACHECK_INVALID")
+
+    # Staging (4).
+    def test_staging_preserves_sha_and_provenance(self):
+        dc = self._make_accepted("staging")
+        out = Path(self.td.name) / "staged"
+        report = self._run_solve(dc, out)
+        for entry in report["staged_files"]:
+            self.assertEqual(entry["sha256"], file_hash(out / entry["path"]), entry["path"])
+        self.assertTrue((out / "source_datacheck_report.json").is_file())
+        self.assertTrue((out / "source_model_manifest.json").is_file())
+        self.assertTrue((out / "source_build_report.json").is_file())
+
+    # Runtime policy (5-9).
+    def test_safe_default_policy(self):
+        dc = self._make_accepted("pol_default")
+        report = self._run_solve(dc, Path(self.td.name) / "pol_default")
+        self.assertEqual(report["execution"]["cpus"], 1)
+        self.assertEqual(report["execution"]["standard_parallel"], "solver")
+        self.assertEqual(report["execution"]["policy_source"], "safe_default")
+
+    def test_local_policy_override(self):
+        dc = self._make_accepted("pol_local")
+        policy = Path(self.td.name) / "policy_local.json"
+        atomic_json(policy, {"schema_version": 1, "cpus": 4, "standard_parallel": "solver"})
+        report = self._run_solve(dc, Path(self.td.name) / "pol_local", policy_path=policy)
+        self.assertEqual(report["execution"]["cpus"], 4)
+        self.assertEqual(report["execution"]["policy_source"], "local_environment")
+
+    def test_cli_policy_beats_local_file(self):
+        dc = self._make_accepted("pol_cli")
+        policy = Path(self.td.name) / "policy_cli.json"
+        atomic_json(policy, {"schema_version": 1, "cpus": 4, "standard_parallel": "solver"})
+        report = self._run_solve(dc, Path(self.td.name) / "pol_cli", policy_path=policy,
+                                 cpus=2, standard_parallel="all")
+        self.assertEqual(report["execution"]["cpus"], 2)
+        self.assertEqual(report["execution"]["standard_parallel"], "all")
+        self.assertEqual(report["execution"]["policy_source"], "cli")
+
+    def test_invalid_policy_rejected(self):
+        dc = self._make_accepted("pol_bad")
+        for kwargs in ({"cpus": 0}, {"cpus": "two"}, {"cpus": True},
+                       {"standard_parallel": "threads"}, {"standard_parallel": 8}):
+            with self.assertRaises(PipelineError, msg=repr(kwargs)) as caught:
+                pds.run_solve(dc, Path(self.td.name) / ("bad_%s" % id(kwargs)),
+                              abaqus_command=self._fake_launcher(),
+                              policy_path=Path(self.td.name) / "no_policy.json", **kwargs)
+            self.assertEqual(caught.exception.code, "CONFIG_INVALID")
+        bad_file = Path(self.td.name) / "policy_bad.json"
+        atomic_json(bad_file, {"schema_version": 2, "cpus": 1})
+        with self.assertRaises(PipelineError) as caught:
+            pds.run_solve(dc, Path(self.td.name) / "bad_file",
+                          abaqus_command=self._fake_launcher(), policy_path=bad_file)
+        self.assertEqual(caught.exception.code, "CONFIG_INVALID")
+
+    # Command contract (10-11).
+    def test_command_contains_analysis(self):
+        dc = self._make_accepted("cmd")
+        report = self._run_solve(dc, Path(self.td.name) / "cmd")
+        self.assertIn("analysis", report["execution"]["command"])
+        command = json.loads((Path(self.td.name) / "cmd/command.json").read_text())
+        self.assertTrue(command["analysis_flag_present"])
+
+    def test_command_has_no_datacheck_continue_recover(self):
+        dc = self._make_accepted("cmdsafe")
+        report = self._run_solve(dc, Path(self.td.name) / "cmdsafe")
+        for token in ("datacheck", "continue", "recover"):
+            self.assertNotIn(token, report["execution"]["command"])
+        command = json.loads((Path(self.td.name) / "cmdsafe/command.json").read_text())
+        self.assertIs(command["datacheck_flag_present"], False)
+        self.assertIs(command["continue_flag_present"], False)
+
+    # Failure evidence (12-17).
+    def test_missing_sta_fails(self):
+        dc = self._make_accepted("no_sta")
+        report = self._run_solve(dc, Path(self.td.name) / "no_sta", sta=None)
+        self.assertEqual(report["status"], "SOLVE_FAILED")
+        self.assertIn("missing required artifacts: sta", report["failure_reasons"])
+
+    def test_missing_odb_fails(self):
+        dc = self._make_accepted("no_odb")
+
+        def fake_no_odb(argv, cwd, timeout_s, stdout_path, stderr_path):
+            cwd = Path(cwd)
+            (cwd / (self.JOB + ".dat")).write_text("ANALYSIS COMPLETE TEXT", encoding="utf-8")
+            (cwd / (self.JOB + ".msg")).write_text("", encoding="utf-8")
+            (cwd / (self.JOB + ".sta")).write_text(self._STA_OK, encoding="utf-8")
+            Path(stdout_path).write_text("Abaqus JOB " + self.JOB + " COMPLETED\n", encoding="utf-8")
+            Path(stderr_path).write_text("", encoding="utf-8")
+            return 0
+
+        with mock.patch("pipeline.physical_solve._run_process_to_files", fake_no_odb), \
+                mock.patch("pipeline.physical_solve.query_release",
+                           return_value={"release": "Abaqus 2026 TEST", "return_code": 0}):
+            report = pds.run_solve(dc, Path(self.td.name) / "no_odb",
+                                   abaqus_command=self._fake_launcher(),
+                                   policy_path=Path(self.td.name) / "no_policy.json")
+        self.assertEqual(report["status"], "SOLVE_FAILED")
+        self.assertIn("missing required artifacts: odb", report["failure_reasons"])
+
+    def test_missing_stdout_completion_fails(self):
+        dc = self._make_accepted("no_stdout")
+        report = self._run_solve(dc, Path(self.td.name) / "no_stdout", stdout_completed=False)
+        self.assertEqual(report["status"], "SOLVE_FAILED")
+        self.assertIn("stdout completion token missing", report["failure_reasons"])
+
+    def test_missing_sta_completion_marker_fails(self):
+        dc = self._make_accepted("no_sta_marker")
+        sta = self._STA_OK.replace(" THE ANALYSIS HAS COMPLETED SUCCESSFULLY\n", "")
+        report = self._run_solve(dc, Path(self.td.name) / "no_sta_marker", sta=sta)
+        self.assertEqual(report["status"], "SOLVE_FAILED")
+        self.assertIn(".sta completion marker missing", report["failure_reasons"])
+
+    def test_fatal_diagnostics_fail(self):
+        dc = self._make_accepted("fatal")
+        dat = ("***ERROR: excessive incremental rotation\n"
+               "THE ANALYSIS HAS NOT BEEN COMPLETED\n")
+        report = self._run_solve(dc, Path(self.td.name) / "fatal", dat=dat)
+        self.assertEqual(report["status"], "SOLVE_FAILED")
+        self.assertTrue(any("THE ANALYSIS HAS NOT BEEN COMPLETED" in f["message"]
+                            for f in report["diagnostics"]["fatal"]))
+
+    def test_target_time_not_reached_fails(self):
+        dc = self._make_accepted("short_time")
+        sta = ("   1    30   1     0     2     2     2   6.500E-01   6.500E-01\n"
+               " THE ANALYSIS HAS COMPLETED SUCCESSFULLY\n")
+        report = self._run_solve(dc, Path(self.td.name) / "short_time", sta=sta)
+        self.assertEqual(report["status"], "SOLVE_FAILED")
+        self.assertTrue(any(reason.startswith("target step time not reached")
+                            for reason in report["failure_reasons"]))
+
+    # Success states (18-19) and claims (20-22).
+    def test_clean_complete(self):
+        dc = self._make_accepted("clean")
+        report = self._run_solve(dc, Path(self.td.name) / "clean")
+        self.assertEqual(report["status"], "SOLVE_COMPLETED")
+        self.assertEqual(report["claims"]["solve"], "COMPLETED")
+        self.assertTrue(report["completion"]["stdout_completed"])
+        self.assertTrue(report["completion"]["sta_completed"])
+        self.assertTrue(report["completion"]["target_time_reached"])
+        self.assertEqual(report["completion"]["target_step_time"], 1.0)
+        self.assertTrue((Path(self.td.name) / "clean/solve_report.json").is_file())
+
+    def test_warning_only_complete(self):
+        dc = self._make_accepted("warn")
+        dat = ("***WARNING: adjacent secondary nodes (72,71) are on the opposite "
+               "sides of double-sided main surface\n"
+               "ANALYSIS COMPLETE TEXT\n")
+        report = self._run_solve(dc, Path(self.td.name) / "warn", dat=dat)
+        self.assertEqual(report["status"], "SOLVE_COMPLETED_WITH_WARNINGS")
+        self.assertEqual(report["claims"]["solve"], "COMPLETED_WITH_WARNINGS")
+        self.assertEqual(report["diagnostics"]["error_count"], 0)
+        self.assertEqual(report["diagnostics"]["warning_count"], 1)
+        self.assertIn("opposite", report["diagnostics"]["warnings"][0]["message"])
+
+    def test_odb_recorded_but_extraction_not_run(self):
+        dc = self._make_accepted("odbclaim")
+        report = self._run_solve(dc, Path(self.td.name) / "odbclaim")
+        self.assertIs(report["claims"]["odb_exists"], True)
+        self.assertEqual(report["claims"]["odb_results_qa"], "NOT_RUN")
+        self.assertEqual(report["claims"]["mechanics_qa"], "NOT_RUN")
+        self.assertIsNotNone(report["artifacts"]["odb"]["sha256"])
+
+    def test_dataset_eligible_false(self):
+        dc = self._make_accepted("eligible")
+        report = self._run_solve(dc, Path(self.td.name) / "eligible")
+        self.assertIs(report["claims"]["dataset_eligible"], False)
+
+    def test_m2_warnings_inherited_in_provenance(self):
+        dc = self._make_accepted("inherit")
+        report = self._run_solve(dc, Path(self.td.name) / "inherit")
+        self.assertEqual(report["source_datacheck"]["status"],
+                         "DATACHECK_COMPLETED_WITH_WARNINGS")
+        self.assertEqual(report["source_datacheck"]["warning_count"], 1)
+        self.assertIn("CONTACT", report["source_datacheck"]["warning_categories"])
+
+    def test_sta_parser_handles_real_three_time_columns(self):
+        # Regression: real .sta rows carry up to THREE time columns
+        # (total/step/inc-of) after 6-7 integer fields, and cutback rows with
+        # 'U' markers must be skipped.
+        sta = (" STEP  INC ATT SEVERE EQUIL TOTAL TOTAL STEP INC OF DOF IF\n"
+               "   1    18   1     1     1     3     4  0.230      0.230      0.02000\n"
+               "   1    25   1U   10     0    10  0.350      0.350      0.005000\n"
+               "   1    26   1     3     1     4  0.363      0.363      0.007500\n"
+               "   1    59   1     2     9    11  1.00       1.00       0.009117\n"
+               " THE ANALYSIS HAS COMPLETED SUCCESSFULLY\n")
+        path = Path(self.td.name) / "real.sta"
+        path.write_text(sta, encoding="utf-8")
+        info = pds.parse_sta(path)
+        self.assertTrue(info["sta_exists"])
+        self.assertTrue(info["sta_completion"])
+        self.assertEqual(info["increment_count"], 3)  # cutback row 25U skipped
+        self.assertEqual(info["last_step"], 1)
+        self.assertEqual(info["last_increment"], 59)
+        self.assertEqual(info["last_step_time"], 1.0)
+
+    # Attempt protection (22).
+    def test_existing_attempt_not_overwritten(self):
+        dc = self._make_accepted("existing")
+        out = Path(self.td.name) / "existing_attempt"
+        out.mkdir()
+        (out / "sentinel.txt").write_text("keep", encoding="utf-8")
+        with self.assertRaises(PipelineError) as caught:
+            self._run_solve(dc, out)
         self.assertEqual(caught.exception.code, "OUTPUT_EXISTS")
         self.assertEqual((out / "sentinel.txt").read_text(), "keep")
 
