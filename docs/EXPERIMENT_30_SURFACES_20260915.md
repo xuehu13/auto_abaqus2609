@@ -43,6 +43,15 @@ mesh 失败 2 例：
 
 两者均保留完整 stage stdout/stderr 证据，待单独诊断；不能断言 mesher 算法错误。
 
+### 证据优先级（Evidence precedence）
+
+`work/night_batch_30surfaces_20260915/` 内同时存在两代 summary 产物，引用时必须区分：
+
+- **终态统计（权威来源）**：`batch_status.json`（`batch_status=PHASE_A_DONE`、`mesh_pass 28 / mesh_fail 2 / build_pass 28 / datacheck_accepted 28 / datacheck_failed 0 / solve_completed 0`）、`batch_log.txt`、`FORENSIC_REVIEW_20260916.md`。
+- **HISTORICAL STALE SUMMARY（非终态，保留不删）**：`BATCH_SUMMARY.md` 与 `batch_summary.json` 记录的是**首轮 double-reserve bug 运行**（30 个 case 全部 `MESH_FAILED (OUTPUT_EXISTS)`，mesh pass 0 / fail 30）。它们按"证据不覆盖"原则保留，但**不得**当作本次实验的最终 batch 结果引用。
+
+本文以及 `docs/PROJECT_STATUS.md`、`docs/HANDOFF_CURRENT.md` 中的 28/30、28/28、28/28 一律以上述**终态统计**为准。`work/` 内文件属 git-ignored 本地证据，2026-09-16 maintenance checkpoint 未对其做任何修改。
+
 ## Solve 情况（Phase B，4 个尝试，0 完成）
 
 | case | 现象 | 终止方式 |

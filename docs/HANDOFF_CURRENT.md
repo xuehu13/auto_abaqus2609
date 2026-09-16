@@ -121,7 +121,7 @@ Layer 4 Visualization Policy   曲线/云图/动画/论文图      ← postproce
 
 ## 9. 已验证 / 未验证边界
 
-**已验证**：Python/Pixi 逻辑（142/142 core + 8/8 Pixi boundary，2026-09-16）；真实 Fig.1 mesh bundle smoke；block 确定性渲染；M1-7 physical.inp 确定性装配 + 13 项仓库静态检查；config 隔离；hand-INP 语义逐项对比；**M2：Fig.1 自动 physical.inp 通过真实 Abaqus 2026 Physical Data Check（returncode=0、0 error、10 warnings 保留、`ANALYSIS DATACHECK COMPLETE`，`work/fig1_datacheck_m2_final_001`）**。
+**已验证**：Python/Pixi 逻辑（2026-09-16 maintenance checkpoint 实测 `pixi run test`：core 151 OK + boundary 8 OK；**测试数量与该次验证 checkpoint 绑定，旧数量不作为长期当前值**）；真实 Fig.1 mesh bundle smoke；block 确定性渲染；M1-7 physical.inp 确定性装配 + 13 项仓库静态检查；config 隔离；hand-INP 语义逐项对比；**M2：Fig.1 自动 physical.inp 通过真实 Abaqus 2026 Physical Data Check（returncode=0、0 error、10 warnings 保留、`ANALYSIS DATACHECK COMPLETE`，`work/fig1_datacheck_m2_final_001`）**。
 
 **尚未验证**：30% 压缩收敛；接触在加载全过程中的物理正确性（含 10 条 M2 warning 对应的初始化调整与双侧面歧义）；PBC 大变形行为；准静态科学有效性（`quasi_static_status=pending_qa`）；自动模型 requested-output 的真实 ODB 行为；production dataset eligibility。
 

@@ -7,6 +7,8 @@
 > in `config/*.local.json` instead.
 >
 > LEGACY NOTICE（2026-09-14 加注）：本文写于 Conda→Pixi 迁移之前。第 3、8 节中的 `F:\Anaconda` 解释器命令已停用，仅为当时实测记录；当前唯一活动入口是工作区根的 `pixi run <task>`（见根目录 README 的 Pixi quick-start）。正文内容保持原样未改动。
+>
+> [SUPERSEDED 范围补充 2026-09-16]：除第 3、8 节外，**第 1 节的代码根目录行**（历史双层 `DiffuMeta_Automation_v0.1\DiffuMeta_Automation_v0.1\`，已于 2026-09-14 移除）与**第 5 节的 Conda PATH 调用**同样只用于历史复现。当前代码根 = 仓库根 `F:\auto_abaqus`；当前唯一入口是 `pixi run <task>`。正文依然保持原样未改动。
 
 检查日期：2026-09-13（Asia/Shanghai）。这是本机实测记录，原 `VERIFICATION.md` 记载的 2026-09-12 Linux 测试仍保留为历史记录。
 
@@ -17,7 +19,7 @@
 | 用途 | 已查证路径 |
 |---|---|
 | VS Code 工作区 / 本地 Git 根目录 | `F:\auto_abaqus` |
-| 代码根目录 | `F:\auto_abaqus\DiffuMeta_Automation_v0.1\DiffuMeta_Automation_v0.1` |
+| 代码根目录 | `F:\auto_abaqus\DiffuMeta_Automation_v0.1\DiffuMeta_Automation_v0.1` **[SUPERSEDED：该双层目录已于 2026-09-14 移除；当前代码根 = 仓库根 `F:\auto_abaqus`]** |
 | 工作区参考资料 | `F:\auto_abaqus\reference` |
 | 工作区已有网格基准 | `F:\auto_abaqus\baseline_test`，不是 `baseline` |
 | 外部已验证网格工程 | `F:\DiffuMeta_Abaqus\periodic_surface_mesher_clean` |
@@ -41,6 +43,8 @@
 容量是时点值，未来调度必须重新检查。论文硬件的 96 GB 内存不是本机内存；论文 Table S6 耗时也不是本机性能保证。尚未做求解并发、内存峰值、许可证容量或长期磁盘增长测试。
 
 ## 3. 普通 Python / Conda
+
+> [SUPERSEDED] 本节为 Conda→Pixi 迁移前的实测记录；其中的 `F:\Anaconda` 解释器与 `python` 绝对路径调用均已停用，仅用于历史复现。当前依赖真值是 `pixi.toml + pixi.lock`，入口为 `pixi run <task>`。
 
 Conda 24.11.3 位于 `F:\Anaconda`。当前终端直接写 `python` 默认找到 `F:\Anaconda\python.exe`（Python 3.12.7），并不自动等于几何环境。因此开发命令优先写解释器绝对路径。
 
@@ -84,6 +88,8 @@ Abaqus 自带 NumPy 1.22.4 不满足普通主控 requirements，是正常的两�
 
 ## 5. CGAL
 
+> [SUPERSEDED] 本节中的 `F:\Anaconda\envs\diffumeta_cgal\Library\bin` PATH 调用与 Conda 包元数据是迁移前记录，仅用于历史复现；当前 CGAL 由 Pixi `cgal` 环境提供（`pixi run build-cgal`）。
+
 实际程序：
 
 ```text
@@ -125,6 +131,8 @@ Conda 元数据：`cgal-cpp 6.0.1 hc4f255e_1`。已有 CMakeCache 显示 Release
 已提取 5 份 PDF 的逐页文本，并渲染关键页检查公式、表格和历史截图。具体阅读范围见 PROJECT_STATUS；提取完整文本不等于人工逐页精读全部截图。缺少全系统 Poppler 渲染命令不再阻碍本次核查。
 
 ## 8. 用户可以怎样复查
+
+> [SUPERSEDED] 下面的命令使用**已删除的历史双层代码目录**与 `F:\Anaconda` 解释器，**当前不可执行**，保留仅作历史复现。当前等价命令（在仓库根执行）：`pixi run plan`、`pixi run test`、`pixi run cli-help`。
 
 打开 VS Code 的“终端 → 新建终端”，使用 PowerShell，依次执行：
 
