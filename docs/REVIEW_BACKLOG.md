@@ -154,7 +154,7 @@ REVIEW_BACKLOG 默认不读。
 | RB-007 | 11 | pipeline/docs | RESOLVED | LOW | STAGES 中 SOLVE 描述宣称 watchdog，但 production watchdog 未实现 |
 | RB-008 | 4 | config schema | DEFERRED | MEDIUM | numerics config 混合 physical numerics 与 runtime/orchestration 参数 |
 | RB-009 | 12 | repo | DEFERRED | LOW/MEDIUM | .gitattributes `* -text` 作用于全仓库 |
-| RB-010 | 13 | data/reproducibility | DEFERRED | MEDIUM | 30 validation equations 位于 git-ignored reference |
+| RB-010 | 13 | data/reproducibility | RESOLVED | MEDIUM | 30 validation equations 已作为 tracked `references/validation_30_surfaces.md` 发布 |
 | RB-011 | 14 | pipeline | DEFERRED | HIGH (M4/M5) | curve_qa TARGETS 硬编码到 0.30 |
 | RB-012 | 15 | performance | DEFERRED | HIGH | standard_parallel=all / threads_per_mpi_process 性能债 |
 | RB-013 | 17+18+19 | mechanics QA | DEFERRED | HIGH | contact warnings QA / PBC large-deformation / quasi-static validity |
@@ -275,11 +275,13 @@ REVIEW_BACKLOG 默认不读。
 ### RB-010 — 30 validation equations 位于 git-ignored reference
 
 - 日期：2026-09-16；来源：Pre-M4 cleanup 审查 + 外部 review
-- 优先级：MEDIUM；状态：**DEFERRED**；类别：data / reproducibility
+- 优先级：MEDIUM；状态：**RESOLVED**（2026-09-16 references publication maintenance）；类别：data / reproducibility
 - 问题：30 曲面验证实验的方程清单在 `reference/selected_30_diverse_cases_report.md`（git-ignored 本地证据）；公开仓库记录了 28/30 mesh PASS 等结论，但其他用户无法完整复现实验所用方程集。
 - 当前决定：DEFERRED。以后考虑新增 tracked 的 `examples/validation_30_surfaces.json`，只含 `case_id`、`surface_expression`、`equation_sha256`；不提交论文 PDF 或原始 dataset。`reference/` 保持只读不动。
 - 下一步：用户确认后设计 tracked manifest。
-- 相关文件：`reference/selected_30_diverse_cases_report.md`（本地）、`docs/EXPERIMENT_30_SURFACES_20260915.md`。
+- **解决记录（2026-09-16 maintenance）**：30 个验证方程已作为 tracked 文档 **`references/validation_30_surfaces.md`** 进入仓库（同时新增 `references/README.md`、`references/PAPERS.md`）。内容取自本地 `reference/selected_30_diverse_cases_report.md`（SHA256 `d42e9461…d889b`，与该实验 `batch_source_manifest.json` 记录的 `source_sha256` 相同），并已核对 30 条方程**顺序与文本完全一致**（30/30）、metadata 列逐字一致。`reference/` 仍为 git-ignored 本地原始资料，未移动、未删除、未提交。原计划的 `examples/*.json` 形式由该 Markdown tracked reference 取代。
+- 解决摘要：**Resolved in this references publication maintenance**（30 validation equations 现已在 tracked repository 中可读，无需访问本地 `reference/`）。
+- 相关文件：`references/validation_30_surfaces.md`、`references/README.md`、`reference/selected_30_diverse_cases_report.md`（本地）、`docs/EXPERIMENT_30_SURFACES_20260915.md`。
 
 ### RB-011 — curve_qa TARGETS 硬编码到 0.30
 

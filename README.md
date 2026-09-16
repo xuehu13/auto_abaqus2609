@@ -23,6 +23,8 @@ Contact。
 （`Fig1_Compression.inp`，20% 压缩）作为 keyword 语义 baseline；一个验证算例（Fig.1）
 已端到端跑通整条自动化链。
 
+主要科学来源、论文建模背景与应变采样信息见 `references/PAPERS.md`。
+
 ## 当前已经实现的功能
 
 以下功能已在开发工作站（Abaqus 2026）上实现并真实验证：
@@ -87,9 +89,12 @@ stress-strain curve, standardized results
 | `config/` | 示例配置（`*.example.json`）与机器本地配置（`*.local.json`，git-ignored） |
 | `tests/` | 单元测试（全部为合成 fixture；不依赖真实 Abaqus 或真实 Fig.1 结果） |
 | `docs/` | 项目文档（见"文档索引"） |
+| `references/` | tracked 的精选科学与验证参考资料（主要论文索引与 30 曲面 validation case） |
 | `vendor/periodic_surface_mesher_v1.0/` | 冻结的已验证周期曲面网格程序（禁止修改） |
 | `scripts/` | Pixi 任务包装与迁移边界测试 |
 | `work/<attempt>/` | 每次运行一个不可变目录（git-ignored） |
+
+> 开发机还存在 **git-ignored** 的 `reference/`（本地原始资料，可能包含论文 PDF、旧 handoff、历史记录等）和 `work/`（运行证据）；它们**不是** GitHub clone 后的 tracked 目录。其中 **`references/` 才是 GitHub tracked 的精选参考目录**（注意与 `reference/` 不是同一个目录）。
 
 ## 环境要求
 
@@ -216,8 +221,11 @@ safe default。本地配置永不进入仓库。
 
 ## 30曲面阶段性验证（2026-09-15/16）
 
-使用 `reference/selected_30_diverse_cases_report.md` 中挑选的 30 个明显不同的周期曲面
-方程，在统一 20% physics 配置下运行自动化链的阶段性实验：
+使用 `references/validation_30_surfaces.md` 中记录的 30 个差异曲面方程，在统一 20%
+physics 配置下运行自动化链的阶段性实验：
+
+> provenance：该 tracked 清单来自本地 git-ignored `reference/selected_30_diverse_cases_report.md`，
+> 并已与实验 manifest（`batch_source_manifest.json`）做 30/30 一致性核对。
 
 - **30 个曲面进入自动化测试**。
 - **28 / 30 自动网格通过**（ref30_01：stage05 周期性校验未过；ref30_22：CGAL 崩溃）。
@@ -295,6 +303,7 @@ M5 单算例闭环 → M6 网格自动化 → M7 可靠性工程 → M8 batch。
 | `docs/EXPERIMENT_30_SURFACES_20260915.md` | 30曲面阶段性验证实验记录 |
 | `docs/Abaqus_Automation_Design_v1.0.md` | 原始设计文档（历史架构参考） |
 | `docs/LOCAL_EVIDENCE.json` / `docs/source_inventory.json` | 历史本地证据快照（非可移植配置） |
+| `references/README.md` | 科学来源与 validation references 总入口（二级导航：`references/PAPERS.md`、`references/validation_30_surfaces.md`） |
 
 ## License
 

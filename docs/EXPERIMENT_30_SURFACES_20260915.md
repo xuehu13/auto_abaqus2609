@@ -15,6 +15,9 @@ M7/M8。
   方程池中按差异度挑选的 30 个；`reference/` 为 git-ignored 本地证据）。
 - 每个方程的 SHA256 记录在实验目录的 `batch_source_manifest.json`（equation-level
   traceability）。
+- **tracked reference**：用于本次 30 曲面验证的精选 case 列表及其原始方程已整理为
+  `references/validation_30_surfaces.md`（该文件描述"**测试对象是什么**"；本文件仍是
+  "实际运行了什么、结果如何"的唯一权威记录，`work/` 为本地原始运行证据）。
 - case 配置由 fig1 模板生成，唯一差异为 `case_id` 与 surface 表达式（剥离尾部
   ` = 0`）。
 
