@@ -26,6 +26,8 @@ _INPUT_NAME = "physical.inp"
 _DEFAULT_JOB_NAME = "fig1_m2_datacheck"
 _DEFAULT_TIMEOUT_S = 3600
 _ENVIRONMENT_LOCAL = Path(__file__).resolve().parents[1] / "config" / "environment.local.json"
+_ENVIRONMENT_EXAMPLE = Path(__file__).resolve().parents[1] / "config" / "environment.example.json"
+_ENVIRONMENT_SCHEMA_KEYS = {"schema_version", "abaqus_launcher", "abaqus_release_required"}
 _JOB_NAME_RE = re.compile(r"^[A-Za-z0-9_]{1,64}$")
 _ERROR_PREFIX = "***ERROR"
 _WARNING_PREFIX = "***WARNING"
@@ -145,14 +147,55 @@ def parse_diagnostics(dat_path, msg_path, log_path):
     }
 
 
+def load_environment_config(environment_path=None):
+    """Load the machine-local Abaqus environment config, if present.
+
+    Resolution: an explicit environment_path is used as-is; otherwise the
+    Git-ignored environment.local.json is preferred and the tracked
+    environment.example.json template (abaqus_launcher=null,
+    abaqus_release_required="2026") is the fallback, matching the documented
+    environment schema 2 convention. Returns None when no config file exists
+    at the resolved location. A config file that exists but is
+    unreadable/malformed JSON or violates environment schema 2 (only
+    schema_version, abaqus_launcher, abaqus_release_required) is a hard
+    CONFIG_INVALID error: the pipeline must never silently ignore a broken
+    environment file and fall back to PATH, where a *different* Abaqus install
+    could be picked up without the operator noticing.
+    """
+    explicit = environment_path is not None
+    path = Path(environment_path) if explicit else _ENVIRONMENT_LOCAL
+    if not path.is_file() and not explicit:
+        path = _ENVIRONMENT_EXAMPLE
+    if not path.is_file():
+        return None
+    try:
+        configured = read_json(path)
+    except ValueError as exc:
+        raise PipelineError("CONFIG_INVALID",
+                            "Abaqus environment file exists but is not valid JSON; refusing to "
+                            "silently fall back to PATH: " + str(path)) from exc
+    if not isinstance(configured, dict):
+        raise PipelineError("CONFIG_INVALID",
+                            "Abaqus environment file must contain a JSON object: " + str(path))
+    unexpected = set(configured) - _ENVIRONMENT_SCHEMA_KEYS
+    if configured.get("schema_version") != 2 or unexpected:
+        raise PipelineError("CONFIG_INVALID",
+                            "Abaqus environment file must use schema_version 2 with only "
+                            "schema_version, abaqus_launcher and abaqus_release_required: "
+                            + str(path) + " (unexpected keys: " + repr(sorted(unexpected)) + ")")
+    return configured
+
+
 def resolve_launcher(explicit=None, environment_path=None):
     """Resolve the local Abaqus launcher without hard-coding any install path.
 
     Order: explicit CLI value (must resolve; no silent fallback) -> project
     environment config (Git-ignored environment.local.json convention,
     abaqus_launcher may be null) -> PATH `abaqus` -> PATH `abq2026`. Windows
-    .bat/.cmd launchers are valid. Anything unresolvable raises
-    ABAQUS_LAUNCHER_NOT_FOUND; the system PATH is never modified.
+    .bat/.cmd launchers are valid. A config file that exists but is malformed
+    raises CONFIG_INVALID instead of falling back to PATH. Anything
+    unresolvable raises ABAQUS_LAUNCHER_NOT_FOUND; the system PATH is never
+    modified.
     """
     if explicit:
         resolved = Path(explicit)
@@ -165,13 +208,9 @@ def resolve_launcher(explicit=None, environment_path=None):
                             "Explicit Abaqus launcher not found: " + repr(explicit))
     candidates = []
     env_path = Path(environment_path) if environment_path else _ENVIRONMENT_LOCAL
-    if env_path.is_file():
-        try:
-            configured = read_json(env_path).get("abaqus_launcher")
-        except (ValueError, OSError):
-            configured = None
-        if configured:
-            candidates.append(("environment:" + env_path.name, configured))
+    config = load_environment_config(environment_path)
+    if config and config.get("abaqus_launcher"):
+        candidates.append(("environment:" + env_path.name, config["abaqus_launcher"]))
     for name in ("abaqus", "abq2026"):
         candidates.append(("path:" + name, name))
     for source, candidate in candidates:
@@ -185,6 +224,43 @@ def resolve_launcher(explicit=None, environment_path=None):
                         "No Abaqus launcher found. Pass --abaqus-command, set "
                         "abaqus_launcher in config/environment.local.json, or put "
                         "abaqus/abq2026 on the PATH; the system PATH is never modified.")
+
+
+def enforce_release_gate(launcher_path, environment_path=None, release_info=None):
+    """Gate datacheck/solve on `abaqus_release_required` before an attempt exists.
+
+    When the environment config sets a required release (e.g. "2026"), the
+    launcher-reported release must clearly match it *before* any expensive job
+    is submitted; the gate is placed before reserve_directory so a mismatch
+    never leaves a partial attempt. A release that cannot be determined is
+    treated as a mismatch: an unknown version must never pass as the required
+    one. Returns the gate record stored in the stage report.
+    """
+    config = load_environment_config(environment_path)
+    required = (config or {}).get("abaqus_release_required")
+    info = release_info if release_info is not None else query_release(launcher_path)
+    raw = (info or {}).get("release")
+    match = re.search(r"20\d\d", raw) if isinstance(raw, str) else None
+    gate = {"release_required": None if required is None else str(required),
+            "release_reported": raw,
+            "release_year": match.group(0) if match else None}
+    if not required:
+        gate["gate"] = "not_configured"
+        return gate
+    if not match:
+        raise PipelineError(
+            "ABAQUS_RELEASE_MISMATCH",
+            "Cannot determine the launcher's Abaqus release (reported: " + repr(raw)
+            + "); required release: " + repr(required) + ". Refusing to submit an "
+            "expensive job against an unknown version.")
+    if match.group(0) != str(required):
+        raise PipelineError(
+            "ABAQUS_RELEASE_MISMATCH",
+            "Required Abaqus release " + repr(required) + " but the launcher reports "
+            + match.group(0) + ". Refusing to run; fix config/environment.local.json "
+            "or pass --abaqus-command explicitly.")
+    gate["gate"] = "enforced"
+    return gate
 
 
 def query_release(launcher_path):
@@ -344,6 +420,9 @@ def run_datacheck(build_dir, output, abaqus_command=None, job_name=_DEFAULT_JOB_
     launcher = resolve_launcher(abaqus_command, environment_path)
     policy = _resolve_execution_policy(cpus, standard_parallel, policy_path)
     release = query_release(launcher["path"])
+    # Release gate BEFORE any attempt directory is created: a wrong or unknown
+    # Abaqus version must never start an expensive job.
+    release_gate = enforce_release_gate(launcher["path"], environment_path, release)
     attempt = reserve_directory(output)
     staged_entries = _stage_inputs(source_dir, attempt)
     staged_paths = {entry["path"] for entry in staged_entries}
@@ -375,10 +454,14 @@ def run_datacheck(build_dir, output, abaqus_command=None, job_name=_DEFAULT_JOB_
     generated, artifacts = _collect_artifacts(attempt, job_name, staged_paths)
     diagnostics = parse_diagnostics(artifacts["dat"], artifacts["msg"], artifacts["log"])
     missing = [kind for kind in _REQUIRED_ARTIFACTS if artifacts[kind] is None]
+    # Zero-byte artifacts are not evidence: a 0-byte required artifact (e.g. an
+    # odb) means the job never really produced it.
+    zero_byte = [kind for kind in _REQUIRED_ARTIFACTS if artifacts[kind] is not None
+                 and artifacts[kind].stat().st_size == 0]
     # An accepted datacheck needs the explicit 'ANALYSIS DATACHECK COMPLETE'
     # marker; a clean-looking return code alone is not completion evidence.
     if (returncode != 0 or diagnostics["error_count"] or diagnostics["abort_evidence"]
-            or missing or not diagnostics["datacheck_complete_evidence"]):
+            or missing or zero_byte or not diagnostics["datacheck_complete_evidence"]):
         status, claim = "DATACHECK_FAILED", "FAIL"
     elif diagnostics["warning_count"]:
         status, claim = "DATACHECK_COMPLETED_WITH_WARNINGS", "COMPLETED_WITH_WARNINGS"
@@ -398,7 +481,8 @@ def run_datacheck(build_dir, output, abaqus_command=None, job_name=_DEFAULT_JOB_
         "execution_policy": policy,
         "staged_files": staged_entries,
         "abaqus": {
-            "launcher": launcher, "release": release, "job_name": job_name,
+            "launcher": launcher, "release": release, "release_gate": release_gate,
+            "job_name": job_name,
             "command": argv, "cwd": str(attempt), "return_code": returncode,
             "start_time": started, "end_time": ended,
         },
@@ -428,6 +512,7 @@ def run_datacheck(build_dir, output, abaqus_command=None, job_name=_DEFAULT_JOB_
                if diagnostics["abort_evidence"] else [])
             + (["datacheck completion marker missing"]
                if not diagnostics["datacheck_complete_evidence"] else [])
-            + (["missing required artifacts: " + ", ".join(missing)] if missing else []))
+            + (["missing required artifacts: " + ", ".join(missing)] if missing else [])
+            + (["zero-byte required artifacts: " + ", ".join(zero_byte)] if zero_byte else []))
     atomic_json(attempt / "datacheck_report.json", report)
     return report

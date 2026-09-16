@@ -436,9 +436,9 @@ resources
 
 当前唯一主目标：
 
-# M3：单作业真实求解
+# M4：ODB 自动提取与结果 QA
 
-M1/M2/M3 均已完成（2026-09-15）：Fig.1 自动 physical.inp 通过真实 Abaqus 2026 Data Check（COMPLETED_WITH_WARNINGS）并完成真实 20% 自动求解（`work/fig1_solve_m3_20pct_003`：SOLVE_COMPLETED_WITH_WARNINGS，target step time 达标，完整 ODB）。下一目标：**M4 ODB 自动提取与结果 QA**。30% 压缩验收、准静态判定与接触/PBC 科学检查属于 M4/后续阶段。
+M1/M2/M3 均已完成（2026-09-15）：Fig.1 自动 physical.inp 通过真实 Abaqus 2026 Data Check（COMPLETED_WITH_WARNINGS）并完成真实 20% 自动求解（`work/fig1_solve_m3_20pct_003`：SOLVE_COMPLETED_WITH_WARNINGS，target step time 达标，完整 ODB）。当前下一目标：**M4 ODB 自动提取与结果 QA**（2026-09-16 曾对 5 个已有 ODB 做过 ad-hoc/read-only history diagnostic，见 `docs/EXPERIMENT_30_SURFACES_20260915.md`，但不构成 M4 进展）。30% 压缩验收、准静态判定与接触/PBC 科学检查属于 M4/后续阶段。
 
 暂不扩大问题范围。
 

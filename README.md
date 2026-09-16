@@ -39,7 +39,9 @@ Contact。
 
 ## 当前尚未实现的功能
 
-- ODB 提取 / 结果 QA（M4）——已完成的 solve ODB 尚未被读取。
+- 正式 M4 ODB 自动提取 / 结果 QA——**尚未接入**。已有 ODB 曾进行 ad-hoc /
+  read-only history extraction（仅用于验证与诊断，见
+  `docs/EXPERIMENT_30_SURFACES_20260915.md`），不构成正式 M4 或 mechanics QA。
 - 30% 压缩验收（后续验证目标；早期手工 30% 尝试未收敛，见 `docs/TROUBLESHOOTING.md`）。
 - 批量/多曲面执行框架、重试/watchdog/恢复、数据集导出（M7/M8）。
 - UMAT、n×n×n 多胞、3D PBC——当前有意不做。
@@ -128,12 +130,27 @@ pixi run cli solve --datacheck-dir work/<datacheck-attempt> --out work/<new-atte
 `build-physical` 需要冻结 mesher 流水线产出的已验证网格 bundle
 （`shell.npz` + `shell_report.json` + `periodic_pairs.csv`）。
 
+### 复现已验证的 Fig.1 20% baseline
+
+`config/physics.fig1_20pct_validation.json` 是正式 M3 已真实完成 Fig.1 20% solve
+（`work/fig1_solve_m3_20pct_003`，`SOLVE_COMPLETED_WITH_WARNINGS`）的 physics
+profile，与该成功案例使用的本地配置逐字段一致（SHA256 `9340898e…`）。复现示例：
+
+```powershell
+pixi run cli build-physical --npz <shell.npz> --report <report.json> --pairs <pairs.csv> --physics config/physics.fig1_20pct_validation.json --out work/<new-attempt>
+```
+
+对比：`config/physics.example.json` 是 30% **prototype** profile——它只代表建模
+选项的起点，**尚未完成任何 30% target solve validation**（历史手工 30% 尝试未收敛）。
+两个 profile 都受 AGENTS 规则约束：科研参数不得硬编码为长期常数。
+
 ## 配置文件
 
 | 文件 | 用途 |
 |---|---|
 | `config/cases/fig1.json` | 已验证 baseline 曲面的 case 定义 |
-| `config/physics.example.json` | 边界模式、PBC、接触、压板、压缩目标、分析步时间 |
+| `config/physics.example.json` | 边界模式、PBC、接触、压板、压缩目标、分析步时间（**30% prototype profile，尚未完成 target solve validation**） |
+| `config/physics.fig1_20pct_validation.json` | **20% validation profile**：与真实完成 Fig.1 solve 的 M3 案例逐字段一致（见下） |
 | `config/materials/demo_surrogate.json` | 材料定义（demo surrogate，非生产数据） |
 | `config/numerics.example.json` | Procedure、增量、stabilization 策略（分析步数值） |
 | `config/outputs.example.json` | ODB 输出请求（restart/field/history） |
@@ -274,6 +291,7 @@ M5 单算例闭环 → M6 网格自动化 → M7 可靠性工程 → M8 batch。
 | `docs/TROUBLESHOOTING.md` | 失败、调试与经验教训 |
 | `docs/HISTORICAL_v0.1_README.md` | 被取代的 v0.1 README（历史） |
 | `docs/VERIFICATION.md` | 历史验证证据 |
+| `docs/REVIEW_BACKLOG.md` | review / 审查意见总账（问题与建议跟踪表） |
 | `docs/EXPERIMENT_30_SURFACES_20260915.md` | 30曲面阶段性验证实验记录 |
 | `docs/Abaqus_Automation_Design_v1.0.md` | 原始设计文档（历史架构参考） |
 | `docs/LOCAL_EVIDENCE.json` / `docs/source_inventory.json` | 历史本地证据快照（非可移植配置） |

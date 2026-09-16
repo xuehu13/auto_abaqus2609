@@ -21,7 +21,7 @@ from pathlib import Path
 
 from .common import PipelineError, atomic_json, atomic_text, file_hash, read_json, reserve_directory
 from .diagnostics import FATAL
-from .physical_datacheck import categorize, query_release, resolve_launcher
+from .physical_datacheck import categorize, enforce_release_gate, query_release, resolve_launcher
 
 _INPUT_NAME = "physical.inp"
 _DEFAULT_JOB_NAME = "fig1_m3_solve"
@@ -297,6 +297,9 @@ def run_solve(datacheck_dir, output, abaqus_command=None, job_name=_DEFAULT_JOB_
     launcher = resolve_launcher(abaqus_command, environment_path)
     policy = _resolve_execution_policy(cpus, standard_parallel, policy_path)
     release = query_release(launcher["path"])
+    # Release gate BEFORE any attempt directory is created: a wrong or unknown
+    # Abaqus version must never start an expensive analysis job.
+    release_gate = enforce_release_gate(launcher["path"], environment_path, release)
     attempt = reserve_directory(output)
     staged_entries = _stage_solve_inputs(datacheck_dir, attempt)
     staged_paths = {entry["path"] for entry in staged_entries}
@@ -372,7 +375,7 @@ def run_solve(datacheck_dir, output, abaqus_command=None, job_name=_DEFAULT_JOB_
             "time_period_s": target_step_time,
         },
         "execution": {
-            "launcher": launcher, "release": release, "job_name": job_name,
+            "launcher": launcher, "release": release, "release_gate": release_gate, "job_name": job_name,
             "cpus": policy["cpus"], "standard_parallel": policy["standard_parallel"],
             "policy_source": policy["source"],
             "command": argv, "cwd": str(attempt), "return_code": returncode,

@@ -60,7 +60,7 @@ STAGES = [
     ("MESH_DATACHECK", "Abaqus mesh datacheck + frozen 07 + outer evidence check"),
     ("BUILD", "Validated mesh -> complete physical INP and model manifest"),
     ("PHYSICAL_DATACHECK", "Fresh physical datacheck + contact initialization QA"),
-    ("SOLVE", "Dynamic implicit solve with resource limits and watchdog"),
+    ("SOLVE", "Dynamic implicit solve with resource limits; production watchdog/recovery is deferred to M7"),
     ("EXTRACT", "Abaqus Python -> raw histories, fields and diagnostics"),
     ("QA", "Coverage, energies, PBC, contact, mesh and material validity"),
     ("PUBLISH", "Atomic result acceptance and idempotent dataset export"),

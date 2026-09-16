@@ -3,7 +3,7 @@
 更新时间：2026-09-16
 项目：auto_abaqus2609
 branch：main
-基准 HEAD：852f2765ca987c0360d8e7bcca6ee409e450dab4（`docs: consolidate pre-M4 project documentation`，已 push；此后修改按规则另行 commit）
+基准 HEAD：last reviewed checkpoint = 22e1a598a47e2ceed977123dc2b49dcd11b3314a（`docs: localize project documentation and record 30-case validation`）；实际当前 HEAD 以 `git rev-parse HEAD` 为准（避免每次 docs commit 立即过期）
 Pre-M4 consolidation 完成 commit：852f2765ca987c0360d8e7bcca6ee409e450dab4
 
 本文是快速接管摘要，**不替代** AGENTS/ROADMAP/PROJECT_STATUS/IMPLEMENTATION_STATUS/IMPLEMENTATION_PLAN/LOCAL_ENVIRONMENT。
@@ -121,7 +121,7 @@ Layer 4 Visualization Policy   曲线/云图/动画/论文图      ← postproce
 
 ## 9. 已验证 / 未验证边界
 
-**已验证**：Python/Pixi 逻辑（115/115 core + 8/8 Pixi boundary，2026-09-15）；真实 Fig.1 mesh bundle smoke；block 确定性渲染；M1-7 physical.inp 确定性装配 + 13 项仓库静态检查；config 隔离；hand-INP 语义逐项对比；**M2：Fig.1 自动 physical.inp 通过真实 Abaqus 2026 Physical Data Check（returncode=0、0 error、10 warnings 保留、`ANALYSIS DATACHECK COMPLETE`，`work/fig1_datacheck_m2_final_001`）**。
+**已验证**：Python/Pixi 逻辑（142/142 core + 8/8 Pixi boundary，2026-09-16）；真实 Fig.1 mesh bundle smoke；block 确定性渲染；M1-7 physical.inp 确定性装配 + 13 项仓库静态检查；config 隔离；hand-INP 语义逐项对比；**M2：Fig.1 自动 physical.inp 通过真实 Abaqus 2026 Physical Data Check（returncode=0、0 error、10 warnings 保留、`ANALYSIS DATACHECK COMPLETE`，`work/fig1_datacheck_m2_final_001`）**。
 
 **尚未验证**：30% 压缩收敛；接触在加载全过程中的物理正确性（含 10 条 M2 warning 对应的初始化调整与双侧面歧义）；PBC 大变形行为；准静态科学有效性（`quasi_static_status=pending_qa`）；自动模型 requested-output 的真实 ODB 行为；production dataset eligibility。
 

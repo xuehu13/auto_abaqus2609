@@ -1620,6 +1620,103 @@ class PhysicalDataCheckTests(_BuilderFixtureMixin, unittest.TestCase):
         self.assertEqual(caught.exception.code, "OUTPUT_EXISTS")
         self.assertEqual((out / "sentinel.txt").read_text(), "keep")
 
+    def test_malformed_local_environment_does_not_fallback(self):
+        # A broken environment.local.json must raise CONFIG_INVALID instead of
+        # silently falling back to PATH (where a *different* Abaqus could live).
+        broken = Path(self.td.name) / "env_broken.json"
+        broken.write_text("{not valid json", encoding="utf-8")
+        with self.assertRaises(PipelineError) as caught:
+            pdc.resolve_launcher(environment_path=broken)
+        self.assertEqual(caught.exception.code, "CONFIG_INVALID")
+
+    def test_environment_schema_violation_is_config_invalid(self):
+        bad = Path(self.td.name) / "env_bad_schema.json"
+        atomic_json(bad, {"schema_version": 3, "abaqus_launcher": None})
+        with self.assertRaises(PipelineError) as caught:
+            pdc.resolve_launcher(environment_path=bad)
+        self.assertEqual(caught.exception.code, "CONFIG_INVALID")
+
+    def test_release_gate_required_2026_actual_2025_fails(self):
+        env = Path(self.td.name) / "env_2026_a.json"
+        atomic_json(env, {"schema_version": 2, "abaqus_launcher": None,
+                          "abaqus_release_required": "2026"})
+        with self.assertRaises(PipelineError) as caught:
+            pdc.enforce_release_gate(self._fake_launcher(), environment_path=env,
+                                     release_info={"release": "Abaqus 2025 TEST",
+                                                   "return_code": 0})
+        self.assertEqual(caught.exception.code, "ABAQUS_RELEASE_MISMATCH")
+
+    def test_release_gate_required_2026_actual_2026_passes(self):
+        env = Path(self.td.name) / "env_2026_b.json"
+        atomic_json(env, {"schema_version": 2, "abaqus_launcher": None,
+                          "abaqus_release_required": "2026"})
+        gate = pdc.enforce_release_gate(self._fake_launcher(), environment_path=env,
+                                        release_info={"release": "Abaqus 2026 TEST",
+                                                      "return_code": 0})
+        self.assertEqual(gate["gate"], "enforced")
+        self.assertEqual(gate["release_year"], "2026")
+
+    def test_release_gate_unknown_release_is_mismatch(self):
+        env = Path(self.td.name) / "env_2026_c.json"
+        atomic_json(env, {"schema_version": 2, "abaqus_launcher": None,
+                          "abaqus_release_required": "2026"})
+        with self.assertRaises(PipelineError) as caught:
+            pdc.enforce_release_gate(self._fake_launcher(), environment_path=env,
+                                     release_info={"release": None, "return_code": 1})
+        self.assertEqual(caught.exception.code, "ABAQUS_RELEASE_MISMATCH")
+
+    def test_release_gate_not_configured_is_recorded_not_fatal(self):
+        gate = pdc.enforce_release_gate(
+            self._fake_launcher(),
+            environment_path=Path(self.td.name) / "no_env_dir_here",
+            release_info={"release": "Abaqus 9999 UNLISTED", "return_code": 0})
+        self.assertEqual(gate["gate"], "not_configured")
+        self.assertIsNone(gate["release_required"])
+
+    def test_run_datacheck_release_mismatch_creates_no_attempt(self):
+        source = self._source("relgate")
+        env = Path(self.td.name) / "env_2026_d.json"
+        atomic_json(env, {"schema_version": 2, "abaqus_launcher": None,
+                          "abaqus_release_required": "2026"})
+        out = Path(self.td.name) / "relgate_out"
+        with mock.patch("pipeline.physical_datacheck.query_release",
+                        return_value={"release": "Abaqus 2025 TEST", "return_code": 0}):
+            with self.assertRaises(PipelineError) as caught:
+                pdc.run_datacheck(source, out, abaqus_command=self._fake_launcher(),
+                                  environment_path=env,
+                                  policy_path=Path(self.td.name) / "no_policy_file.json")
+        self.assertEqual(caught.exception.code, "ABAQUS_RELEASE_MISMATCH")
+        # The gate fires before reserve_directory: no partial attempt is left.
+        self.assertFalse(out.exists())
+
+    def test_zero_byte_datacheck_odb_fails(self):
+        source = self._source("zeroodb")
+
+        def fake_zero_odb(argv, cwd, timeout_s):
+            cwd = Path(cwd)
+            (cwd / (self.JOB + ".dat")).write_text("ANALYSIS DATACHECK COMPLETE",
+                                                   encoding="utf-8")
+            (cwd / (self.JOB + ".odb")).write_bytes(b"")
+            return 0, "fake stdout", ""
+
+        with mock.patch("pipeline.physical_datacheck._run_process", fake_zero_odb), \
+                mock.patch("pipeline.physical_datacheck.query_release",
+                           return_value={"release": "Abaqus 2026 TEST", "return_code": 0}):
+            report = pdc.run_datacheck(source, Path(self.td.name) / "zeroodb_out",
+                                       abaqus_command=self._fake_launcher(),
+                                       policy_path=Path(self.td.name) / "no_policy_file.json")
+        self.assertEqual(report["status"], "DATACHECK_FAILED")
+        self.assertIn("zero-byte required artifacts: odb", report["failure_reasons"])
+
+    def test_datacheck_report_records_release_gate(self):
+        source = self._source("gateinfo")
+        report, _calls = self._run_m2(source, Path(self.td.name) / "gateinfo",
+                                      "ANALYSIS DATACHECK COMPLETE",
+                                      "Abaqus JOB fig1_m2_datacheck COMPLETED")
+        self.assertIn("release_gate", report["abaqus"])
+        self.assertIn(report["abaqus"]["release_gate"]["gate"],
+                      ("enforced", "not_configured"))
+
 
 class PhysicalSolveTests(_BuilderFixtureMixin, unittest.TestCase):
     """M3 regression: accepted-deck staging, runtime policy and solve judgement.

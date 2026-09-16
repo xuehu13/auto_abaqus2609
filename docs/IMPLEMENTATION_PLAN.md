@@ -2,6 +2,8 @@
 
 日期：2026-09-13。以现有 v0.1 和本机查证结果为起点，不重写网格算法，不立即放量。完整架构仍见 `Abaqus_Automation_Design_v1.0.md`，本文件落实执行顺序与验收证据。
 
+> **[HISTORICAL / 部分已被 SUPERSEDED（2026-09-16 加注）]**：下一段"当前接管任务到环境检查……本次没有启动"是 2026-09-13 接管时的历史描述。此后 M1/M2/M3 已全部完成、30曲面 Phase A 验证与 5-case ad-hoc ODB diagnostic 已发生；当前状态以 `docs/HANDOFF_CURRENT.md` 与根目录 `README.md` 为准。历史文字保留不删除。
+
 当前接管任务到环境检查、基础测试、旧结果审计和文档为止；下列求解/Data Check/批次属于后续开发任务，本次没有启动。
 
 ## HIGH-PRIORITY DEFERRED PERFORMANCE DEBT：standard_parallel=all（2026-09-16 登记）

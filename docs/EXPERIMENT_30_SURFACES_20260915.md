@@ -56,9 +56,10 @@ mesh 失败 2 例：
 
 2026-09-16 01:30–01:33，Windows Update（KB5129195，2026-09-15 13:41 安装并标记
 "需要重启"）强制重启系统，杀死正在运行的 ref30_05 solve 与 runner。证据：System
-日志连续 5 条 Kernel-Power 107（Power Action: Reboot，Kernel API）；Setup 日志
-01:33:02 KB5129195 → Installed；ref30_05 最后 .sta/.odb 写入时间 01:28:40 与重启
-时间吻合。
+日志连续多条 Kernel-Power **109**（"内核电源管理器已启动关闭转换"，Power Action:
+Reboot，Kernel API；01:30:49 / 01:31:08 / 01:32:33，配套 521/577/125/578）；Setup
+日志 01:33:02 KB5129195 → Installed；ref30_05 最后 .sta/.odb 写入时间 01:28:40 与
+重启时间吻合。
 
 ### 结果判定
 
@@ -91,6 +92,44 @@ ODB（≈16.8MB）无 `.sta` 完成标记，**不作为成功结果**——parti
 - 实验暴露的 double-reserve 与 BOM 解析问题均为 local runner bug；正式代码已审计：
   `reserve_directory` 每 stage 单次调用、`read_json` 使用 `utf-8-sig`、
   `OUTPUT_EXISTS` 拒绝覆盖有测试锁定。**正式代码无需为此修改**（2026-09-16 审计）。
+
+## 已有 ODB 的 ad-hoc stress-strain diagnostic（2026-09-16）
+
+**性质**：ad-hoc 只读诊断，不是正式 M4。未运行任何新 Abaqus 作业；使用
+`abaqus python` + `abaqus_worker/export_history.py` 以 `readOnly=True` 打开 5 个
+**已有** ODB，从 `Compression` step 的 RP_TOP history region 提取 `U3`/`RF3`，
+绘制同一张工程应力–应变图。结果目录：`work/diagnostic_stress_strain_5cases_20260916/`
+（summary.json、5×CSV、PNG/PDF，git-ignored 本地证据）。
+
+| case | ODB 状态 | history 点数 | final strain | final stress (MPa) | max stress (MPa) |
+|---|---|---|---|---|---|
+| Fig.1 | complete（20% 达标） | 60 | 0.20000 | 0.3141 | 0.3141 |
+| ref30_02 | partial（人工终止） | 70 | 0.03586 | 0.2082 | 0.2665 |
+| ref30_03 | partial（TOO MANY ATTEMPTS） | 28 | 0.06015 | 0.0000（末点伪影） | 0.1257 |
+| ref30_04 | partial（人工终止） | 80 | 0.11213 | 0.3626 | 0.3626 |
+| ref30_05 | partial（Windows Update 重启中断） | 70 | 0.19551 | 0.1080 | 0.2562 |
+
+符号约定（先以 Fig.1 完整结果核实：final U3=−2.0mm、final RF3=−31.41N，压缩时
+RF3 为负，未使用 `abs()`）：`strain = -U3 / 10`（L=10mm）、`stress = -RF3 / 100`
+（A=100mm²，compression-positive，MPa）；5 条曲线定义完全相同。partial 曲线只画到
+ODB 中实际存在的最后一个 history 点，无外推。
+
+**明确边界**：本诊断不构成 M4 DONE，不构成 mechanics QA，不改变任何 case 的
+`SOLVE_FAILED`/partial 判定；ref30_05 的部分 ODB 仍不是有效完成结果。
+
+**留给 M4 的两条关键经验**：
+
+1. **step time ≠ engineering strain**。正式应变必须来自
+   `strain = -U3 / L`（本模型 L=10mm），不能用 `step_time × target_strain` 替代
+   （Smooth Step amplitude 非线性，且 history 最后写入时刻落后于 `.sta` 最后行）。
+2. **failed / interrupted ODB 的最后 history point 可能包含终止伪点**。本次
+   ref30_03 出现 final RF3≈0 的 interruption artifact（同一时刻 RF3 前一点为
+   −12.57N）。因此未来 M4 必须：保留 solver completion status；partial/failed
+   history 与 complete result 严格区分；不把最后一个 datum 自动视为真实最终力学
+   状态；不允许外推 partial curve。
+
+（早期版本本文与 TROUBLESHOOTING 曾把事件 ID 写为 Kernel-Power 107，2026-09-16
+经事件日志核实统一修正为 **109**，见 `docs/REVIEW_BACKLOG.md` RB-004。）
 
 ## 下一步
 

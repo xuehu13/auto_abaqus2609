@@ -204,8 +204,9 @@ Status: `HISTORICAL`（环境事件；非代码问题）
 
 2026-09-16 01:30–01:33，Windows Update（KB5129195，2026-09-15 13:41 安装并标记
 "需要重启"）强制重启系统，杀死了正在运行的 ref30_05 solve（step time ≈0.979）与
-runner。证据：System 日志连续 5 条 Kernel-Power 107（Power Action: Reboot，
-Kernel API）；Setup 日志 01:33:02 KB5129195 → Installed；ref30_05 最后 .sta/.odb
+runner。证据：System 日志连续多条 Kernel-Power **109**（"内核电源管理器已启动关闭
+转换"，Power Action: Reboot，Kernel API；01:30:49 / 01:31:08 / 01:32:33，配套
+521/577/125/578）；Setup 日志 01:33:02 KB5129195 → Installed；ref30_05 最后 .sta/.odb
 写入时间 01:28:40 与重启时间吻合。**教训**：过夜批量前必须暂停 Windows Update
 自动重启或设置活动时间，否则 solve 窗口会被同类事件打断。
 
