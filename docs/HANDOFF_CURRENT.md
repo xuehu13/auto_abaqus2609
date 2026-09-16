@@ -1,10 +1,10 @@
-# Current Handoff — M2 Checkpoint (Physical Data Check DONE, COMPLETED_WITH_WARNINGS)
+# 当前交接状态 — Pre-M4 / 30曲面阶段性验证
 
-更新时间：2026-09-15
+更新时间：2026-09-16
 项目：auto_abaqus2609
 branch：main
-基准 HEAD：63a2c5c7911d89a2d5863f7cf392786f4bfeabdb（`feat: complete M1 physical input assembly`，已 push；M2 修改为本地工作区内容，按规则未 commit）
-M1-7 完成 commit：63a2c5c7911d89a2d5863f7cf392786f4bfeabdb
+基准 HEAD：852f2765ca987c0360d8e7bcca6ee409e450dab4（`docs: consolidate pre-M4 project documentation`，已 push；此后修改按规则另行 commit）
+Pre-M4 consolidation 完成 commit：852f2765ca987c0360d8e7bcca6ee409e450dab4
 
 本文是快速接管摘要，**不替代** AGENTS/ROADMAP/PROJECT_STATUS/IMPLEMENTATION_STATUS/IMPLEMENTATION_PLAN/LOCAL_ENVIRONMENT。
 
@@ -36,17 +36,21 @@ Fig.1、论文参数、手工模型只是当前 validation baseline/profile。�
 
 | 里程碑 | 状态 |
 |---|---|
-| M1-1 scaffold | DONE |
-| M1-2 material + section | DONE |
-| M1-3a rigid platens / RP | DONE |
-| M1-3b BC | DONE |
-| M1-4 contact | DONE |
-| M1-5 step + loading | DONE |
-| M1-6 output requests | DONE |
-| M1-7 assembly/static validation | DONE（2026-09-15） |
+| M1-1..M1-7 physical INP writer | DONE（2026-09-15） |
 | M2 Physical Data Check | **DONE（2026-09-15，COMPLETED_WITH_WARNINGS：Fig.1 自动 physical.inp 通过真实 Abaqus 2026 Data Check，0 error / 10 warnings 保留）** |
 | M3 solve（single case, 20% Fig.1） | **DONE（2026-09-15，COMPLETED_WITH_WARNINGS：真实 Abaqus/Standard 求解完成，target step time 达标，完整 ODB）** |
+| M3.1 solve hardening | DONE（2026-09-15：completion marker gate、job-specific stdout token、non-empty ODB gate、execution.wall_time_s） |
+| Pre-M4 consolidation | **DONE（2026-09-15，commit 852f276：run.py Pixi-only 守卫、docs 整合、README 重写、测试包装、CPU8 实验记录）** |
+| 30曲面 Phase A（mesh→build→Data Check） | **DONE（2026-09-15/16，local experiment）：30 进入 / 28 mesh PASS / 28 build PASS / 28 Data Check accepted / 0 Data Check failed** |
+| 30曲面 Phase B（solve） | **0 完成：ref30_02 人工终止（停滞 ≈0.312）、ref30_03 TOO MANY ATTEMPTS（≈0.39）、ref30_04 人工终止（停滞 ≈0.532）、ref30_05 被 Windows Update 强制重启中断（≈0.979）。0 个有效 ODB。** |
 | M4 ODB extraction / mechanics QA | NOT STARTED |
+
+30曲面实验详情与失败分类：`docs/EXPERIMENT_30_SURFACES_20260915.md`、
+`docs/TROUBLESHOOTING.md`。该实验使用临时 local batch runner
+（`work/night_batch_30surfaces_20260915/run_batch.py`），**不是正式 production
+pipeline 的一部分**；其 double-reserve/BOM 问题均为 local runner bug，正式代码已
+审计确认无同类问题（`reserve_directory` 单次调用 + `utf-8-sig` 读取 + OUTPUT_EXISTS
+测试锁定）。attempt 不覆盖原则未破坏；ref30_05 partial ODB 不作为成功结果。
 
 ## 4. 当前 physical builder 产物
 
@@ -193,6 +197,7 @@ solve = NOT_RUN / odb_results_qa = NOT_RUN / dataset_eligible = false
 4. **当前 safe Data Check profile**：`cpus=1, standard_parallel=solver`（保守默认，已作为代码内置 safe default；机器可用 `config/datacheck_runtime.local.json` 覆盖，CLI `--cpus/--standard-parallel` 优先级最高）。解析顺序：CLI → local file → safe default；来源记录在 report 的 `execution_policy.source`（`cli` / `local_environment` / `safe_default`）。
 5. **M3 Solve execution policy：已在本机与 20% validation case 上真实验证成功**（`cpus=4, standard_parallel=solver`，`work/fig1_solve_m3_20pct_003`）。This is validated for this machine and this validation case only; it is not a universal or performance-optimal profile for all machines/cases. Safe conservative fallback（`cpus=1, standard_parallel=solver`）保留。
 6. **Machine capability probe（Abaqus release/CPU/parallel modes/小型 datacheck 能力缓存）**：NOT IMPLEMENTED，未来需要时再设计。
+7. **HIGH-PRIORITY DEFERRED PERFORMANCE DEBT（standard_parallel=all）**：本机 `standard_parallel=all` 在 General Contact preprocessing 可复现触发 threads-per-domain ERROR（见 TROUBLESHOOTING）；当前 workaround `standard_parallel=solver` 可能牺牲 preprocessing 并行性能。后续优先测试：`cpus=8, threads_per_mpi_process=8, standard_parallel=all`（先 Data Check），候选矩阵 `8/automatic/all`、`8/8/all`、`4/4/all`、`8/4/all`、`8/2/all`、`8/1/all`。任何组合未经验证不得用于正式 solve。详见 `docs/TROUBLESHOOTING.md` 对应条目。
 
 ## 15. M3 result 与下一步
 

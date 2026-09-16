@@ -4,6 +4,17 @@
 
 当前接管任务到环境检查、基础测试、旧结果审计和文档为止；下列求解/Data Check/批次属于后续开发任务，本次没有启动。
 
+## HIGH-PRIORITY DEFERRED PERFORMANCE DEBT：standard_parallel=all（2026-09-16 登记）
+
+Status: `DEFERRED`（登记于 30曲面实验后复盘；本轮只记录，不实际运行）
+
+- 现状：开发机 `standard_parallel=all` 在 General Contact preprocessing（`pre|Elem|ElemC|Econtp|ConnectivityAtNodes`）可复现触发 `EXCEEDED THE MAXIMUM AMOUNT OF THREADS TO BE USED PER DOMAIN (<=100)`；当前 workaround 为 `standard_parallel=solver`（单元操作串行）。完整诊断链见 `docs/TROUBLESHOOTING.md`。
+- 影响：General Contact preprocessing 无法并行，长时 solve 的 wall time 可能显著高于必要值；30曲面实验中单个 solve 16–36 分钟，若进入批量该债务会放大。
+- 后续优先测试（**先 Data Check，后 solve；任何组合未验证不得用于正式求解**）：
+  1. `cpus=8, threads_per_mpi_process=8, standard_parallel=all`（首选；`threads_per_mpi_process` 为 environment 文件级参数，需经 `abaqus_v6.env` 注入，非 abaqus.bat CLI 选项）。
+  2. 候选矩阵（cpus / threads_per_mpi_process / standard_parallel）：`8/automatic/all`、`8/8/all`、`4/4/all`、`8/4/all`、`8/2/all`、`8/1/all`。
+- 验收：以小 deck 或 Data Check 确认 preprocessing 不再触发 threads/domain ERROR，再做真实 solve 对照 wall time；结果无论成败登记回 `docs/TROUBLESHOOTING.md` 与 `docs/HANDOFF_CURRENT.md`。
+
 ## 阶段 A：固定可复核基准（接管已完成主要部分）
 
 已有：32 文件 vendor 保真、真实 Fig.1 bundle 定位、Mesh Data Check 证据、完整 20% 手工作业快照、14 项基础测试、Abaqus Python 真实 history 导出验证、路径/版本/文件指纹登记。

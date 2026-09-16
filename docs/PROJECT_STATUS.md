@@ -4,7 +4,11 @@
 
 核查日期：2026-09-13。范围：工程接管、源资料核对、环境检查、原有轻量测试、现有 ODB 只读检查。未启动任何新 Abaqus Data Check、完整求解或批量计算。
 
+> **[当前状态补充 2026-09-16]**：在上述 M3 checkpoint 之后，Pre-M4 consolidation 已完成（commit 852f276），并完成 30 曲面阶段性验证实验（2026-09-15/16，local experiment）：**30 进入 / 28 mesh PASS / 28 build PASS / 28 Data Check accepted / 0 Data Check failed；4 个 solve 尝试（ref30_02/03/04/05）全部未完成、0 个有效 ODB**（ref30_02/04 收敛停滞人工终止、ref30_03 TOO MANY ATTEMPTS、ref30_05 被 Windows Update 强制重启中断于 ≈0.979）。这证明 mesh → build → Data Check 已在一组明显不同曲面上初步泛化；batch/recovery framework 与 solve 收敛性研究仍属后续里程碑。详情见 `docs/EXPERIMENT_30_SURFACES_20260915.md`。M4 仍未启动。
+
 **当前完成的是"冻结的网格模块 + 自动化基础模块 + 完整自动物理 INP writer（仓库级静态验证）+ 一个真实完成到 20% 的手工压缩算例"。完整 30% 压缩验收、Physical Data Check、监控、恢复和批量主链尚未完成（2026-09-15 M1-7 checkpoint）。**
+
+> **[HISTORICAL / 部分已被 SUPERSEDED]**：以上"当前完成的是…"一句是 2026-09-13 接管核查时的状态概括；其中"Physical Data Check、监控、恢复和批量主链尚未完成"已被 2026-09-15 之后的进展部分取代（Physical Data Check 与单曲面 solve 已完成；监控/恢复/批量仍未实现）。下文第 1–9 节为 2026-09-13 接管审计的原始内容，保留作为证据与推理链；涉及"尚未完成"的状态描述一律以上方当前状态补充与 HANDOFF_CURRENT 为准。
 
 ## 1. 最重要的新发现
 

@@ -1,6 +1,24 @@
 # v0.1 实施状态与后续接口
 
-## M1/M2/M3 进度（M1 checkpoint 2026-09-15 → BUILD complete；M2 checkpoint 2026-09-15 → COMPLETED_WITH_WARNINGS；M3 checkpoint 2026-09-15 → **M3 DONE, COMPLETED_WITH_WARNINGS**）
+## M1/M2/M3 进度（M1 checkpoint 2026-09-15 → BUILD complete；M2 checkpoint 2026-09-15 → COMPLETED_WITH_WARNINGS；M3 checkpoint 2026-09-15 → **M3 DONE, COMPLETED_WITH_WARNINGS**；Pre-M4 consolidation checkpoint 2026-09-15 → DONE；30曲面阶段性验证 2026-09-15/16 → Phase A DONE / Phase B 0 完成）
+
+### Pre-M4 consolidation与30曲面阶段性验证（2026-09-15/16）
+
+- **Pre-M4 consolidation DONE**（commit 852f276）：`run.py` Pixi-only 守卫强化、
+  README/docs 整合重写、测试包装梳理、CPU8 实验记录入档。
+- **30曲面阶段性验证（local experiment）**：30 个差异曲面进入自动化链；
+  **28/30 mesh PASS、28/28 build PASS、28/28 Data Check accepted（0 failed）**；
+  4 个 solve 尝试（ref30_02/03/04/05）全部未完成、**0 个有效 ODB**（02/04 收敛
+  停滞人工终止、03 TOO MANY ATTEMPTS、05 被 Windows Update 强制重启中断于
+  ≈0.979）。证明 mesh → build → Data Check 初步泛化；batch/recovery framework
+  与 solve 收敛性研究仍属后续里程碑。实验记录：`docs/EXPERIMENT_30_SURFACES_20260915.md`。
+- 使用临时 local batch runner（非正式 pipeline）；其 double-reserve/BOM bug 不涉及
+  正式代码（正式代码 2026-09-16 审计确认无同类问题）。attempt 不覆盖原则未破坏；
+  ref30_05 partial ODB 不作为成功结果。
+- 登记新债务：`standard_parallel=all` HIGH-PRIORITY DEFERRED PERFORMANCE DEBT
+  （`docs/IMPLEMENTATION_PLAN.md` / `docs/TROUBLESHOOTING.md`）。
+- 文档语言整理：面向人的文档中文化（README/TROUBLESHOOTING 等），技术术语与
+  状态枚举保留英文；历史资料全部保留并加注状态标记。
 
 ### M1-1 已完成：physical builder scaffold
 - `pipeline/physical_builder.py` 与 `run.py build-physical` CLI（Pixi default 守卫不变，现有命令语义未改）。

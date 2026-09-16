@@ -1,238 +1,270 @@
-# Troubleshooting and Development Lessons
+# 故障排查与开发经验
 
-Real failures, diagnoses and lessons from building this pipeline, with the
-current status of each item. Nothing here is whitelisted: every warning and
-every limitation still belongs to the QA obligations of the later milestones
-(M4 mechanics/contact QA and beyond).
+本项目真实失败案例、诊断路径与经验教训，以及每条目的当前状态。这里没有任何条目被
+白名单：每条 warning 与每个限制仍是后续里程碑（M4 力学/接触 QA 及之后）的 QA 义务。
 
-## How to read this document
+## 如何阅读本文
 
-Status labels:
+状态标签：
 
-- `RESOLVED` 鈥?root cause found and fixed; a regression test guards it.
-- `WORKAROUND` 鈥?a validated bypass exists; the underlying cause is not fixed.
-- `KNOWN LIMITATION` 鈥?accepted scope boundary of the current milestone.
-- `DEFERRED` 鈥?deliberately moved to a later milestone.
-- `HISTORICAL` 鈥?debugging evidence kept for learning; no longer active.
+- `RESOLVED` —— 根因已找到并修复；有回归测试守护。
+- `WORKAROUND` —— 已验证的绕行方案存在；底层原因未修复。
+- `KNOWN LIMITATION` —— 当前里程碑接受的边界。
+- `DEFERRED` —— 有意推迟到后续里程碑。
+- `HISTORICAL` —— 保留用于学习的调试证据；不再是活动问题。
+- `CURRENT` —— 当前有效政策。
 
-Evidence for every item lives in `work/<attempt>` directories (git-ignored)
-and the linked project documents.
+每个条目的证据都在 `work/<attempt>` 目录（git-ignored）与相关项目文档中。
 
-## Abaqus General Contact preprocessing / threads-per-domain failure
+## Abaqus General Contact preprocessing / threads-per-domain 失败
 
-Status: `WORKAROUND` (machine/runtime-specific)
+Status: `WORKAROUND`（machine/runtime-specific）
 
-Running a datacheck or analysis with the default parallel mode
-(`standard_parallel=all`) aborted in `pre.exe` during General Contact
-connectivity processing (`pre | Elem | ElemC | Econtp | ConnectivityAtNodes`):
+以默认并行模式（`standard_parallel=all`）运行 datacheck 或 analysis 时，`pre.exe`
+在 General Contact 连接性处理阶段（`pre | Elem | ElemC | Econtp | ConnectivityAtNodes`）
+中止：
 
 ```
 ***ERROR: EXCEEDED THE MAXIMUM AMOUNT OF THREADS TO BE USED PER DOMAIN.
 PLEASE REDUCE THE NUMBER OF THREADS TO BE LESS THAN OR EQUAL TO 100.
 ```
 
-Diagnosis path (10 controlled attempts, see
-`work/fig1_datacheck_m2_diagnostics_summary.json` in the development
-workspace):
+诊断路径（10 次受控尝试，见开发工作区的
+`work/fig1_datacheck_m2_diagnostics_summary.json`）：
 
-1. Clean environment (minimal PATH, cleared variables) 鈫?identical failure 鈫?
-   inherited-environment pollution ruled out.
-2. The manually built baseline model (`Fig1_Compression.inp`, which had
-   completed a 20% solve on the same install) failed identically 鈫?the
-   automatic deck was exonerated.
-3. `cpus=1` did not bypass it; `threads_per_domain` is not a valid CLI
-   option; `standard_parallel=mpi` is rejected.
-4. A mesh-only input without General Contact completed
-   (`ANALYSIS DATACHECK COMPLETE`) 鈫?the failure is specific to the General
-   Contact parallel element/preprocessing path.
-5. `standard_parallel=solver` (serial element operations) clears the failure:
-   the same deck completes the Data Check and a real 20% solve.
+1. 干净环境（最小 PATH、清空变量）→ 同样失败 → 排除继承环境污染。
+2. 手工 baseline 模型（`Fig1_Compression.inp`，同一安装上完成过 20% solve）同样
+   失败 → 自动 deck 无罪。
+3. `cpus=1` 不能绕过；`threads_per_domain` 不是合法 CLI 选项；`standard_parallel=mpi`
+   被拒绝。
+4. 无 General Contact 的纯网格输入可以完成（`ANALYSIS DATACHECK COMPLETE`）→ 失败
+   特定于 General Contact 并行单元/preprocessing 路径。
+5. `standard_parallel=solver`（单元操作串行）消除失败：同一 deck 完成 Data Check
+   与真实 20% solve。
 
-Interpretation: a reproducible machine/runtime-specific failure of the
-parallel element/preprocessing path. This is an experiment description, not
-a claim about an Abaqus source-level defect. Other machines must not assume
-they need `standard_parallel=solver`; validate before adopting a profile.
+解读：可复现的 machine/runtime-specific 并行单元/preprocessing 路径失败。这是实验
+描述，不是对 Abaqus 源码级缺陷的断言。其他机器不得假设必须
+`standard_parallel=solver`；采用 profile 前先验证。
 
-## Why standard_parallel=solver is used on the development workstation
+## 为什么开发工作站使用 standard_parallel=solver
 
-Status: `WORKAROUND` / current safe profile
+Status: `WORKAROUND` / 当前安全 profile
 
-With element operations serial, the General Contact preprocessing failure
-disappears while the solver still runs (optionally multi-threaded). This is
-why the portable safe default is `cpus=1, standard_parallel=solver` and the
-development workstation validated `cpus=4, solver` (16m33s solve) and tested
-`cpus=8, solver` (see the CPU-count experiment below).
+单元操作串行后 General Contact preprocessing 失败消失，solver 仍可运行（可多线程）。
+这就是可移植 safe default 为 `cpus=1, standard_parallel=solver`、开发工作站验证
+`cpus=4, solver`（16m33s solve）并测试过 `cpus=8, solver`（见 CPU 实验节）的原因。
 
-## jleConfig reqcpus hypothesis and why it was ruled out
+## HIGH-PRIORITY DEFERRED PERFORMANCE DEBT：standard_parallel=all
 
-Status: `HISTORICAL` (hypothesis falsified)
+Status: `DEFERRED`（高优先级性能技术债；本轮只登记，不实际运行）
 
-The site file `SMA/site/jleConfig.env` sets
-`aba_jle_std_direct_reqcpus='32'`, more than the host's 14 cores / 20 logical
-processors. A strict single-variable experiment (SHA-verified backup, exactly
-one line changed `'32' 鈫?'4'`, effectiveness confirmed through
-`information=environment`) still produced the identical threads/domain error,
-so the hypothesis was falsified and the original value restored. Lesson:
-confirm a configuration value is actually *used by the failing code path*
-before blaming it, and always run one-variable experiments with verifiable
-backups.
+`standard_parallel=all` 可让 General Contact preprocessing 并行化，可能显著缩短
+wall time，但在本机触发上述 threads-per-domain ERROR。当前 workaround 是
+`standard_parallel=solver`。后续优先测试方向（**先做 Data Check 验证，再谈 solve**）：
 
-## Data Check interactive .log behavior
+- 首选组合：`cpus=8, threads_per_mpi_process=8, standard_parallel=all`
+  （`threads_per_mpi_process` 是 environment 文件级参数，不是 abaqus.bat CLI 选项，
+  需通过 `abaqus_v6.env`/环境设置注入）。
+- 其他候选矩阵（cpus / threads_per_mpi_process / standard_parallel）：
+  `8 / automatic / all`、`8 / 8 / all`、`4 / 4 / all`、`8 / 4 / all`、
+  `8 / 2 / all`、`8 / 1 / all`。
+- 每个组合先用小 deck 或 Data Check 验证 preprocessing 是否仍触发 threads/domain
+  ERROR；任何组合未验证前不得用于正式 solve。
+- 结论无论成败都要登记到本文与 `docs/HANDOFF_CURRENT.md`。
 
-Status: `KNOWN LIMITATION` (handled)
+## jleConfig reqcpus 假设及其证伪
 
-Abaqus 2026 datacheck interactive runs complete without writing a `.log`
-file; stdout carries the log role. The M2 required-artifact set is therefore
-`.dat + .odb + stdout capture`; `.msg/.log/.exception` are collected when
-present.
+Status: `HISTORICAL`（hypothesis falsified）
 
-## M2 warning signatures (10 warnings, retained)
+站点文件 `SMA/site/jleConfig.env` 设置 `aba_jle_std_direct_reqcpus='32'`，超过本机
+14 核 / 20 逻辑处理器。严格单变量实验（SHA 校验备份、只改一行 `'32' → '4'`、通过
+`information=environment` 确认生效）仍产生同样的 threads/domain 错误，假设被证伪，
+原值已恢复。教训：确认配置值真的被失败代码路径**使用**后再归因；单变量实验必须有
+可验证备份。
 
-Status: `KNOWN LIMITATION` (QA obligations for M4)
+## Data Check 交互式 .log 行为
 
-The accepted Fig.1 Data Check reports 10 warnings, zero errors:
+Status: `KNOWN LIMITATION`（已处理）
 
-- 1脳 General Contact domain has double-sided facets; initial contact
-  adjustments may be incorrect; single-sided surfaces are recommended.
-- 1脳 STRAINFREE adjustment ratio (max incremental adjustment / average
-  characteristic length = 2.55003E-02 at node 544).
-- 8脳 adjacent secondary nodes on opposite sides of the double-sided main
-  surface (nodes 72/71, 85/84, 83/85, 117/116, 171/169, 170/171, 169/170,
-  377/376).
+Abaqus 2026 datacheck 交互式运行完成时不写 `.log` 文件；stdout 承担 log 角色。
+因此 M2 必需 artifact 集为 `.dat + .odb + stdout capture`；`.msg/.log/.exception`
+在存在时收集。
 
-These match the diagnostic signature of the manual 20% baseline job 鈥?not a
-new automation regression 鈥?but they are not proven harmless. The M3 solve
-re-emits the same 10 warnings in its own `.dat` (signature-identical) plus 7
-solver-only zero-moment warnings from the `.msg`.
+## M2 warning 签名（10 条 warning，保留）
+
+Status: `KNOWN LIMITATION`（M4 的 QA 义务）
+
+已接受的 Fig.1 Data Check 报告 10 条 warning、0 error：
+
+- 1× General Contact domain 含 double-sided facets；初始接触调整可能不正确；建议
+  单侧面。
+- 1× STRAINFREE 调整比例（max incremental adjustment / average characteristic
+  length = 2.55003E-02，node 544）。
+- 8× double-sided 主面两侧的相邻 secondary nodes（nodes 72/71、85/84、83/85、
+  117/116、171/169、170/171、169/170、377/376）。
+
+这些与手工 20% baseline 作业的诊断签名一致——不是新的自动化回归——但未证明无害。
+M3 solve 在自己的 `.dat` 中原样重现同 10 条 warning（signature-identical），另有
+7 条来自 `.msg` 的 solver-only zero-moment warnings。
 
 ## Zero-moment warnings
 
-Status: `KNOWN LIMITATION` (QA obligations for M4)
+Status: `KNOWN LIMITATION`（M4 的 QA 义务）
 
-The solve `.msg` contains 7脳
+solve 的 `.msg` 含 7×
 `***WARNING: THERE IS ZERO MOMENT EVERYWHERE IN THE MODEL BASED ON THE
-DEFAULT CRITERION`. The historical manual 20% job showed the same class of
-startup warnings. They are recorded in the solve report and left for M4
-mechanics QA; no acceptance decision is derived from them.
+DEFAULT CRITERION`。历史手工 20% 作业出现过同类启动 warning。它们已记录在
+solve report 中，留待 M4 力学 QA；不据此做任何验收决定。
 
 ## STRAINFREE warning
 
-Status: `KNOWN LIMITATION` (QA obligations for M4)
+Status: `KNOWN LIMITATION`（M4 的 QA 义务）
 
-The preprocessing STRAINFREE adjustment-ratio warning means Abaqus moved
-secondary nodes to resolve initial overclosures. The magnitudes can be
-reviewed with STRAINFREE contour/symbol plots at time=0 once M4 extraction
-exists. Until then the initial contact state is not scientifically cleared.
+preprocessing 的 STRAINFREE 调整比例 warning 表示 Abaqus 移动了 secondary nodes
+以消除初始过盈。待 M4 提取能力就绪后，可用 time=0 的 STRAINFREE 云图/符号图复核
+量级。在此之前初始接触状态未经科学确认。
 
 ## Double-sided contact warnings
 
-Status: `KNOWN LIMITATION` (QA obligations for M4)
+Status: `KNOWN LIMITATION`（M4 的 QA 义务）
 
-Abaqus suggests single-sided surfaces for a General Contact domain with
-double-sided shell facets. The current model intentionally reproduces the
-hand baseline (ALL EXTERIOR over a doubly connected shell plus platens).
-Moving to single-sided surfaces is a modeling decision that must be
-evaluated with real extraction evidence, not done to silence a warning.
+Abaqus 建议 double-sided shell facets 的 General Contact domain 使用单侧面。当前
+模型有意复现手工 baseline（双重连通壳 + 压板的 ALL EXTERIOR）。改单侧面是建模
+决策，必须以真实提取证据评估，不得为消警告而改。
 
 ## M3 .sta parser bug
 
 Status: `RESOLVED`
 
-The first real 20% solve physically completed (stdout token, `.sta`
-completion marker, 0 errors), but the report said `SOLVE_FAILED` with
-`last_step_time=null`: the original `.sta` parser assumed a fixed 9-column
-row, while real Abaqus/Standard rows carry 6鈥? integer fields followed by up
-to THREE time columns (TOTAL TIME, STEP TIME, INC OF TIME), and cutback rows
-carry `U` markers (e.g. `1U`). The parser now consumes leading integer
-fields generically and reads the first two float time columns, skipping
-cutback rows. A regression test uses the real three-time-column format.
+第一次真实 20% solve 物理上已完成（stdout token、`.sta` 完成标记、0 error），但
+报告给出 `SOLVE_FAILED` 且 `last_step_time=null`：原 `.sta` parser 假设固定 9 列
+行，而真实 Abaqus/Standard 行是 6–7 个整数字段后跟最多三个时间列（TOTAL TIME、
+STEP TIME、INC OF TIME），cutback 行带 `U` 标记（如 `1U`）。parser 现在通用消费
+前导整数字段并读取前两个 float 时间列，跳过 cutback 行。回归测试使用真实的三
+时间列格式。
 
-## Attempt 001: physical completion but parser false negative
+## M3 Attempt 001：物理完成但 parser 误判
 
 Status: `HISTORICAL` / `RESOLVED`
 
-`work/fig1_solve_m3_20pct_001` 鈥?wall time 鈮?5m07s, `returncode=0`,
-`Abaqus JOB fig1_m3_solve COMPLETED`, analysis physically complete 鈥?but
-reported `SOLVE_FAILED` because of the parser bug above. Kept as evidence;
-the bug is fixed and guarded by a regression test.
+`work/fig1_solve_m3_20pct_001` —— wall time 约 25m07s、`returncode=0`、
+`Abaqus JOB fig1_m3_solve COMPLETED`、分析物理完成——但因上述 parser bug 被报为
+`SOLVE_FAILED`。保留为证据；bug 已修复并有回归测试。
 
-## Attempt 002: accidental duplicate solve and manual termination
+## M3 Attempt 002：意外重复 solve 与手动终止
 
 Status: `HISTORICAL`
 
-`work/fig1_solve_m3_20pct_002` 鈥?an accidentally duplicated solve invocation
-(鈮?m40s, analysis still in the early increments) that was manually
-terminated with a process-tree kill as soon as it was noticed. It has no
-command.json/solve_report.json because those are written after normal
-completion. Not a valid simulation data point; kept as evidence of the
-incident and of the manual cleanup path.
+`work/fig1_solve_m3_20pct_002` —— 意外重复的 solve 调用（约 5m40s，分析尚在早期
+增量），被发现后立即以进程树终止方式手动终止。它没有
+command.json/solve_report.json（这些在正常完成后才写）。不是有效仿真数据点；
+保留为事件与手动清理路径的证据。
 
-## Attempt 003: accepted validation solve
+## M3 Attempt 003：已接受的验证 solve
 
-Status: `RESOLVED` (official M3 evidence)
+Status: `RESOLVED`（official M3 evidence）
 
-`work/fig1_solve_m3_20pct_003` 鈥?wall time 鈮?6m33s after the parser fix,
-59 increments, `last_step_time = 1.00 = target`, 0 errors, 17 warnings,
-complete ODB. Official accepted M3 solve evidence
-(`SOLVE_COMPLETED_WITH_WARNINGS`).
+`work/fig1_solve_m3_20pct_003` —— parser 修复后 wall time 约 16m33s、59 增量、
+`last_step_time = 1.00 = target`、0 error、17 warnings、完整 ODB。正式已接受的
+M3 solve 证据（`SOLVE_COMPLETED_WITH_WARNINGS`）。
 
-## 8-CPU solver experiment
+## 8-CPU solver 实验
 
-Status: `HISTORICAL` (experiment result recorded; 4 CPU remains preferred)
+Status: `HISTORICAL`（实验结果已记录；4 CPU 仍为首选）
 
-Single-variable experiment on the same accepted deck
-(`work/fig1_solve_cpu8_validation_001`, only `cpus: 4 鈫?8` changed,
-`standard_parallel=solver` kept): the solve completed
-(`SOLVE_COMPLETED_WITH_WARNINGS`, 59 increments, identical cutback pattern,
-0 errors, 17 warnings, same ODB size 16,075,836 bytes) but took 鈮?2m51s
-versus 鈮?6m33s at 4 CPUs 鈥?clearly slower. The local preferred profile
-therefore stays `cpus=4, standard_parallel=solver`; the experiment is
-retained as evidence that wall time on this machine is not simply monotonic
-in CPU count for this nonlinear job.
+同一已接受 deck 的单变量实验（`work/fig1_solve_cpu8_validation_001`，仅把
+`cpus: 4 → 8`，保持 `standard_parallel=solver`）：solve 完成
+（`SOLVE_COMPLETED_WITH_WARNINGS`，59 增量，相同 cutback 模式，0 error，17
+warnings，相同 ODB 大小 16,075,836 bytes）但耗时约 32m51s，而 4 CPU 约 16m33s
+——明显更慢。本机 preferred profile 因此保持 `cpus=4, standard_parallel=solver`；
+实验保留为证据：本机 wall time 对这个非线性作业并非随 CPU 数单调下降。
 
-## Timeout / child process tree limitation
+## 30曲面临时 runner double-reserve bug
 
-Status: `DEFERRED` (M7 reliability)
+Status: `HISTORICAL` / `RESOLVED IN LOCAL EXPERIMENT`
 
-If a solve exceeds the wall limit, `subprocess.TimeoutExpired` aborts the
-Python side before `command.json`/`solve_report.json` are written, so the
-attempt keeps raw outputs but incomplete structured evidence; and only the
-launcher-level process is killed, leaving possible SMALauncher/standard.exe
-descendants that need manual reconciliation. Watchdog, kill-tree, retry,
-resume and adoption belong to the M7 reliability milestone.
+2026-09-15 夜间 30 曲面批量实验使用的**临时 local batch runner**
+（`work/night_batch_30surfaces_20260915/run_batch.py`，不属正式 production
+pipeline）首启时把全部 30 个 case 判为 `MESH_FAILED (OUTPUT_EXISTS)`：其
+mesh 阶段先 `reserve_directory` 创建了 attempt 目录，`prepare_mesh` 内部又对同一
+目录 reserve，必然触发 OUTPUT_EXISTS。当场修复（去掉外层 reserve）、删除 30 个
+空目录并重置状态后重跑，Phase A 正常。
 
-## Attempt preservation policy
+**定性**：这是 local runner 的 bug，不是正式 mesh/build/datacheck pipeline 的
+bug。正式 pipeline 中每个 stage 只调用一次 `reserve_directory`（`pipeline/common.py`
+定义，`mesher_adapter/prepare_fe/physical_builder/physical_datacheck/physical_solve`
+各一处），并且 `OUTPUT_EXISTS` 拒绝覆盖行为有单元测试锁定
+（`tests/test_core.py` 多处）。同批实验还暴露同类的 BOM 解析问题（runner 用
+`utf-8` 读带 BOM 的 JSON 失败）——正式 `pipeline/common.read_json` 一直使用
+`utf-8-sig`，无此问题。两者均无需修改正式代码。
+
+## Windows Update 强制重启中断批量实验
+
+Status: `HISTORICAL`（环境事件；非代码问题）
+
+2026-09-16 01:30–01:33，Windows Update（KB5129195，2026-09-15 13:41 安装并标记
+"需要重启"）强制重启系统，杀死了正在运行的 ref30_05 solve（step time ≈0.979）与
+runner。证据：System 日志连续 5 条 Kernel-Power 107（Power Action: Reboot，
+Kernel API）；Setup 日志 01:33:02 KB5129195 → Installed；ref30_05 最后 .sta/.odb
+写入时间 01:28:40 与重启时间吻合。**教训**：过夜批量前必须暂停 Windows Update
+自动重启或设置活动时间，否则 solve 窗口会被同类事件打断。
+
+ref30_05 的部分 ODB 无完成标记，**不是有效完成结果**（见 attempt 保存政策）。
+
+## 30曲面 difficult solve cases
+
+Status: `NUMERICAL / MECHANICAL INVESTIGATION PENDING`
+
+统一 20% physics 下 4 个 solve 尝试全部未完成（0 个有效 ODB）：
+
+| case | 现象 | 终止方式 |
+|---|---|---|
+| ref30_02 | step time ≈0.312 收敛停滞（增量缩至 ~1e-7，77 增量） | 人工终止 |
+| ref30_03 | ≈0.39 处 TOO MANY ATTEMPTS，2 errors，分析被 Abaqus 终止 | 数值失败 |
+| ref30_04 | step time ≈0.532 收敛停滞（增量 ~6e-8，81 增量） | 人工终止 |
+| ref30_05 | 推进至 ≈0.979（75 增量），被 Windows Update 强制重启中断 | 外部中断 |
+
+上述标记为 **NUMERICAL / MECHANICAL INVESTIGATION PENDING**：尚未做任何力学/数值
+归因，**不能断言模型错误**，也不据此修改任何物理参数。增量自适应、stabilization
+等数值策略调整属科研决策，留待 M4 提取与 QA 能力就绪后系统研究。
+ref30_01/ref30_22 的 mesh 失败（stage05 周期性校验未过 / CGAL access violation）
+同样待单独调查。
+
+## Timeout / child process tree 限制
+
+Status: `DEFERRED`（M7 可靠性）
+
+solve 超过 wall 限时，`subprocess.TimeoutExpired` 会在 `command.json`/
+`solve_report.json` 写出前中止 Python 侧，attempt 保留原始输出但结构化证据不完整；
+且只有 launcher 层进程被杀，可能遗留 SMALauncher/standard.exe 后代需手动清理。
+Watchdog、kill-tree、retry、resume 与接管属于 M7 可靠性里程碑。
+
+## Attempt 保存政策
 
 Status: `CURRENT`
 
-Every attempt lives in its own `work/<attempt>` directory and is never
-overwritten or cleaned. Failed attempts (including false negatives, aborted
-experiments and the accidental duplicate above) are retained verbatim so any
-conclusion can be re-derived from the raw `.dat/.msg/.sta/.odb` files and
-reports.
+每个 attempt 位于自己的 `work/<attempt>` 目录，永不被覆盖或清理。失败的 attempt
+（包括误判、中断实验与上述意外重复运行）逐字保留，任何结论都应能从原始
+`.dat/.msg/.sta/.odb` 文件与报告重新推导。**partial ODB + 无成功完成证据 =
+不是有效的已完成 solve**。
 
-## How to diagnose a failed run
+## 如何诊断一次失败的运行
 
-1. Read `solve_report.json` / `datacheck_report.json`: `status`,
-   `failure_reasons`, `diagnostics` (errors with source file and line), and
-   `claims`.
-2. Read `stdout.txt` for the launcher-level outcome and the
-   `Abaqus JOB <name> COMPLETED` token.
-3. Read `.sta` (completion marker, last increment, cutback rows) and `.dat`
-   / `.msg` for `***ERROR` / `***WARNING` context.
-4. Check `.exception` files for Abaqus abort call stacks.
-5. Compare with the reference evidence in `work/fig1_solve_m3_20pct_003`
-   (accepted solve) before suspecting the deck itself.
-6. Never re-run into the same attempt directory; create a new one and state
-   the reason for the new run.
+1. 读 `solve_report.json` / `datacheck_report.json`：`status`、`failure_reasons`、
+   `diagnostics`（含来源文件与行号的 errors）、`claims`。
+2. 读 `stdout.txt` 看 launcher 层结果与 `Abaqus JOB <name> COMPLETED` token。
+3. 读 `.sta`（完成标记、最后增量、cutback 行）与 `.dat`/`.msg` 的
+   `***ERROR`/`***WARNING` 上下文。
+4. 检查 `.exception` 文件中的 Abaqus abort 调用栈。
+5. 在怀疑 deck 本身之前，先与 `work/fig1_solve_m3_20pct_003`（已接受 solve）的
+   参考证据对比。
+6. 绝不重跑进同一 attempt 目录；新建目录并说明新运行的原因。
 
-## 30% compression non-convergence (historical)
+## 30% 压缩非收敛（历史）
 
 Status: `HISTORICAL` / `KNOWN LIMITATION`
 
-Earlier manual attempts to push the same model to 30% compression
-(U3 = 鈭? mm) stalled before reaching the target, while 20% (U3 = 鈭? mm)
-completed. This does not mean the automation pipeline is invalid: the 20%
-case was intentionally used as the M3 infrastructure validation target, and
-30% remains a later numerical/research validation target (M4+ extraction and
-QA must come first). No parameter was changed to force convergence.
+早期对同一模型推到 30% 压缩（U3 = −3 mm）的手工尝试在达到目标前停滞，而 20%
+（U3 = −2 mm）完成。这不意味着自动化流水线无效：20% 算例被有意用作 M3 基础设施
+验证目标，30% 是后续数值/研究验证目标（M4+ 提取与 QA 必须先行）。没有为强制收敛
+而改任何参数。

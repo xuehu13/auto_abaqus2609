@@ -1,6 +1,8 @@
 # Historical v0.1 README (superseded)
 
 > [HISTORICAL / SUPERSEDED BY THE CURRENT README.md]
+> 这是历史版本 README 快照（v0.1 交付与 M0–M3 开发期的完整原文）。
+> 当前使用方式以仓库根 `README.md` 为准；正文保留用于历史复现。
 > This is the full README as of the v0.1 delivery and the M0–M3 development
 > period. It contains the original delivery notes, the historical Conda-based
 > workflow (superseded by the Pixi workflow in the current README) and the

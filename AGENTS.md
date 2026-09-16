@@ -21,3 +21,4 @@
 - 使用 `pixi run cli <现有命令>`；run.py 拒绝非 Pixi default 解释器。prepare-mesher 只生成 argv 列表，以明确 workspace 的 Pixi geo/cgal 前缀选择环境；删除 geo_python 和 DLL 路径配置，不拼接命令字符串或使用 shell=True。
 - environment schema 2 仅有 schema_version、abaqus_launcher、abaqus_release_required；自动优先使用被忽略的 environment.local.json，否则使用 launcher=null 的模板。CGAL 通过 --cgal-build 选择锁文件匹配的构建产物，缺失则计划 argv=null，不回退旧程序。Abaqus 是外部调用描述，不能继承 Pixi 的 Python/DLL 环境。
 - 冻结 vendor/tools、vendor YAML、reference、历史 work/ZIP 和旧交接内的环境说明是 LEGACY，不是活动入口；允许保留原文。当前操作以 README 的 Pixi quick-start 为准。
+- 语言规则：项目主要读者是中文工程/科研用户。面向人的 README、使用说明、故障排查和状态说明默认中文；Abaqus/Python/Git/CLI 等技术名称、代码、配置键和状态枚举保持英文。AI-first 文档（HANDOFF/ROADMAP/PLAN/STATUS）可根据机器可读性保留英文。历史资料不因语言统一而删除，只加注状态标记（HISTORICAL/LEGACY/SUPERSEDED 等）。

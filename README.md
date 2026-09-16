@@ -1,64 +1,52 @@
-# Auto Abaqus Periodic Surface Pipeline
+# Abaqus 周期曲面自动建模与计算流水线
 
-Automated Abaqus/Standard pipeline for periodic porous-surface structures:
-surface equation → periodic mesh → physical model generation → real Abaqus
-Data Check → real single-job solve → (next) ODB extraction and mechanics QA.
+面向周期多孔曲面结构的自动化 Abaqus/Standard 流水线：
+曲面方程 → 周期网格 → 物理模型生成 → 真实 Abaqus Data Check → 真实单作业 Solve
+→（下一阶段）ODB 提取与力学 QA。
 
-## 1. Overview
+## 项目简介
 
-This repository contains a Python-driven automation pipeline that builds and
-runs compression simulations of periodic surface structures in
-Abaqus/Standard without opening Abaqus/CAE. Every stage runs in its own
-immutable "attempt" directory and produces structured JSON reports plus raw
-Abaqus evidence, so every success and every failure stays traceable.
+本仓库包含一套 Python 驱动的自动化流水线，在不打开 Abaqus/CAE 的情况下完成周期曲面
+结构（单胞壳）在两块刚板之间单轴压缩的建模与求解。每个阶段运行在独立的、不可覆盖的
+attempt 目录中，产出结构化 JSON 报告与原始 Abaqus 证据；每一个成功与失败都可追溯。
 
-The working language of the code and reports is English; several project
-documents are written in Chinese.
+代码与报告的工作语言为英文；项目文档以中文为主（技术术语保留英文）。
 
-## 2. Motivation and project background
+## 项目目的与背景
 
-The project was developed while studying and partially reproducing the
-simulation/data-generation workflow used in diffusion-based mechanical
-metamaterial research: a periodic porous surface shell uniaxially compressed
-between two rigid platens, with lateral periodic boundary conditions and
-General Contact.
+本项目源于对扩散式力学超材料研究中"仿真/数据生成"工作流的学习与部分复现：周期多孔
+曲面壳在两块刚性压板之间单轴压缩，横向施加周期边界条件（PBC），接触采用 General
+Contact。
 
-The goal is **not** an exact replication of every material parameter,
-compression target or implementation detail of the source paper. The goal is
-a robust, reusable Abaqus automation pipeline supporting future
-multi-surface studies and dataset generation. A validated hand-built model
-(`Fig1_Compression.inp`, 20% compression) serves as the keyword-semantic
-baseline, and one validation case (Fig.1) proves the automation chain end to
-end.
+项目目标**不是**逐项复制源论文的每个材料参数、压缩目标或实现细节，而是建立一套健壮、
+可复用的 Abaqus 自动化流水线，支撑后续多曲面研究与数据集生成。一个已验证的手工模型
+（`Fig1_Compression.inp`，20% 压缩）作为 keyword 语义 baseline；一个验证算例（Fig.1）
+已端到端跑通整条自动化链。
 
-## 3. What is implemented today
+## 当前已经实现的功能
 
-Implemented and real-tested on the development workstation (Abaqus 2026):
+以下功能已在开发工作站（Abaqus 2026）上实现并真实验证：
 
-- Periodic mesh preparation (frozen `vendor/periodic_surface_mesher_v1.0`
-  pipeline) and mesh contract validation.
-- Complete physical model generation: shell mesh, material/section, rigid
-  platens and reference points, boundary conditions, lateral XY periodic
-  boundary equations, General Contact, Dynamic Implicit compression step and
-  output requests — assembled into a top-level `physical.inp` and verified by
-  13 repository-owned static checks.
-- Real Abaqus Physical Data Check of the generated deck (Fig.1: 0 errors,
-  10 warnings retained).
-- Real single-job Abaqus/Standard solve of the accepted deck (Fig.1 20%
-  validation case: completed, target step time reached, 0 errors, 17
-  warnings retained, ODB artifact produced).
+- 周期网格准备（冻结的 `vendor/periodic_surface_mesher_v1.0` 流水线）与网格契约校验。
+- 完整物理模型生成：壳网格、材料/截面、刚板与参考点、边界条件、横向 XY 周期边界
+  方程、General Contact、Dynamic Implicit 压缩分析步与输出请求——装配为顶层
+  `physical.inp`，并通过仓库自有的 13 项静态检查。
+- 生成 deck 的真实 Abaqus Physical Data Check（Fig.1：0 error，10 条 warning 保留）。
+- 通过 Data Check 的 deck 的真实 Abaqus/Standard 单作业 Solve（Fig.1 20% 验证算例：
+  完成、target step time 达标、0 error、17 条 warning 保留、产出 ODB artifact）。
+- 30 个差异曲面的阶段性自动验证（mesh → build → Data Check 泛化验证，见下文
+  "30曲面阶段性验证"）。
 
-## 4. What is NOT implemented yet
+## 当前尚未实现的功能
 
-- ODB extraction / results QA (M4) — the solve ODB has not been opened yet.
-- 30% compression acceptance (a later validation target; an earlier manual
-  30% attempt did not converge — see docs/TROUBLESHOOTING.md).
-- Batch/multi-surface execution, retry/watchdog/recovery, dataset export.
-- UMAT, n×n×n cells, 3D PBC — intentionally out of scope for now.
+- ODB 提取 / 结果 QA（M4）——已完成的 solve ODB 尚未被读取。
+- 30% 压缩验收（后续验证目标；早期手工 30% 尝试未收敛，见 `docs/TROUBLESHOOTING.md`）。
+- 批量/多曲面执行框架、重试/watchdog/恢复、数据集导出（M7/M8）。
+- UMAT、n×n×n 多胞、3D PBC——当前有意不做。
 
-`dataset_eligible` is always `false` at this stage.
+本阶段 `dataset_eligible` 恒为 `false`。
 
-## 5. Pipeline overview
+## 整体流程
 
 ```
 surface equation/config
@@ -87,214 +75,209 @@ stress-strain curve, standardized results
         |  future: multi-surface batch, ML          [future]
 ```
 
-## 6. Repository structure
+## 仓库结构
 
-| Path | Content |
+| 路径 | 内容 |
 |---|---|
-| `run.py` | CLI entry (`pixi run cli <command>`) |
-| `pipeline/` | Automation modules (builder, datacheck, solve, PBC, QA, state) |
-| `abaqus_worker/` | Abaqus-Python-only worker scripts (M4, not wired yet) |
-| `config/` | Example configs (`*.example.json`) and machine-local configs (`*.local.json`, git-ignored) |
-| `tests/` | Unit tests (synthetic fixtures only; never real Fig.1 results) |
-| `docs/` | Project documentation (see Documentation index) |
-| `vendor/periodic_surface_mesher_v1.0/` | Frozen, validated periodic surface mesher (do not modify) |
-| `scripts/` | Pixi task wrappers and migration boundary tests |
-| `work/<attempt>/` | One immutable directory per run (git-ignored) |
+| `run.py` | CLI 入口（`pixi run cli <command>`） |
+| `pipeline/` | 自动化模块（builder、datacheck、solve、PBC、QA、state 等） |
+| `abaqus_worker/` | 仅由 Abaqus Python 运行的 worker 脚本（M4，尚未接入） |
+| `config/` | 示例配置（`*.example.json`）与机器本地配置（`*.local.json`，git-ignored） |
+| `tests/` | 单元测试（全部为合成 fixture；不依赖真实 Abaqus 或真实 Fig.1 结果） |
+| `docs/` | 项目文档（见"文档索引"） |
+| `vendor/periodic_surface_mesher_v1.0/` | 冻结的已验证周期曲面网格程序（禁止修改） |
+| `scripts/` | Pixi 任务包装与迁移边界测试 |
+| `work/<attempt>/` | 每次运行一个不可变目录（git-ignored） |
 
+## 环境要求
 
-## 7. Requirements
+- Windows，以及一套 Abaqus/Standard 安装。实际验证过的版本是 Abaqus 2026；其他版本未测试。
+- 可用的 Abaqus launcher：`abaqus.bat`/`abq2026.bat` 在 PATH 上，或在
+  `config/environment.local.json` 中配置（见下文 runtime 配置）。
+- [Pixi](https://pixi.sh) 管理 Python 环境（`pixi.toml` + `pixi.lock` 定义一切；无需
+  Conda activation——历史 Conda 工作流保留在 `docs/HISTORICAL_v0.1_README.md`）。
+- 网格生成需要冻结 mesher 所需的 CGAL 工具链（`pixi run build-cgal --check-only` 可检查）。
 
-- Windows, and an Abaqus/Standard installation. Abaqus 2026 is the version
-  actually validated; other versions are untested.
-- A working Abaqus launcher: `abaqus.bat`/`abq2026.bat` on PATH or configured
-  in `config/environment.local.json` (see §10).
-- [Pixi](https://pixi.sh) for the Python environments (`pixi.toml` +
-  `pixi.lock` define everything; no Conda activation needed — the historical
-  Conda workflow is retained in `docs/HISTORICAL_v0.1_README.md`).
-- For mesh generation: the CGAL toolchain expected by the frozen mesher
-  (`pixi run build-cgal --check-only` verifies it).
+## Pixi Python 与 Abaqus Python
 
-## 8. Python/Abaqus environment separation
+两个 runtime，绝不可混用：
 
-Two runtimes that must never be mixed:
+- **Pixi Python**（`default` 环境）：全部流水线代码、配置、JSON 报告、staging 与进程启动。
+- **Abaqus Python**（Abaqus 自带）：仅用于 ODB 访问与 Abaqus 内部任务（`abaqus_worker/`，M4）。
 
-- **Pixi Python** (`default` environment): all pipeline code, configs, JSON
-  reports, staging and process launching.
-- **Abaqus Python** (shipped with Abaqus): only ODB access and
-  Abaqus-internal tasks (`abaqus_worker/`, M4).
+流水线绝不把 odbAccess 导入 Pixi Python，也绝不把自己的环境注入 Abaqus。两个 runtime
+之间只通过 attempt 目录内的文件交换数据。
 
-The pipeline never imports odbAccess into Pixi Python and never injects its
-own environment into Abaqus. Data exchange happens through files inside the
-attempt directories.
+## 快速开始
 
-## 9. Quick start
-
-```
-pixi run check        # verify the three Pixi environments
-pixi run test         # run the test suite (synthetic fixtures, no Abaqus)
-pixi run plan         # print pipeline stages and implementation status
-pixi run cli-help     # list all CLI commands
+```powershell
+pixi run check        # 校验三个 Pixi 环境
+pixi run test         # 运行测试套件（合成 fixture，不涉及 Abaqus）
+pixi run plan         # 打印流水线阶段与实现状态
+pixi run cli-help     # 列出全部 CLI 命令
 ```
 
-Then the real Abaqus chain (every `--out` must be a NEW directory):
+真实 Abaqus 链（每个 `--out` 必须是**新目录**）：
 
-```
+```powershell
 pixi run cli build-physical --npz <shell.npz> --report <report.json> --pairs <pairs.csv> --out work/<new-attempt>
 pixi run cli datacheck --build-dir work/<build-attempt> --out work/<new-attempt>
 pixi run cli solve --datacheck-dir work/<datacheck-attempt> --out work/<new-attempt>
 ```
 
-`build-physical` requires a validated mesh bundle (`shell.npz` +
-`shell_report.json` + `periodic_pairs.csv`) produced by the frozen mesher
-pipeline (see §11).
+`build-physical` 需要冻结 mesher 流水线产出的已验证网格 bundle
+（`shell.npz` + `shell_report.json` + `periodic_pairs.csv`）。
 
-## 10. Configuration files
+## 配置文件
 
-| File | Purpose |
+| 文件 | 用途 |
 |---|---|
-| `config/cases/fig1.json` | Case definition of the validated baseline surface |
-| `config/physics.example.json` | Boundary mode, PBC, contact, platens, compression target, step time |
-| `config/materials/demo_surrogate.json` | Material definition (demo surrogate, not production data) |
-| `config/numerics.example.json` | Procedure, increments, stabilization policy (step numerics) |
-| `config/outputs.example.json` | ODB output requests (restart/field/history) |
-| `config/quality.example.json` | Draft curve-QA policy (used from M4 on) |
-| `config/environment.example.json` | Abaqus launcher and release requirement (machine-local) |
-| `config/datacheck_runtime.example.json` | Data Check execution policy (cpus, standard_parallel) |
-| `config/solve_runtime.example.json` | Solve execution policy (cpus, standard_parallel) |
+| `config/cases/fig1.json` | 已验证 baseline 曲面的 case 定义 |
+| `config/physics.example.json` | 边界模式、PBC、接触、压板、压缩目标、分析步时间 |
+| `config/materials/demo_surrogate.json` | 材料定义（demo surrogate，非生产数据） |
+| `config/numerics.example.json` | Procedure、增量、stabilization 策略（分析步数值） |
+| `config/outputs.example.json` | ODB 输出请求（restart/field/history） |
+| `config/quality.example.json` | 曲线 QA 策略草稿（M4 起使用） |
+| `config/environment.example.json` | Abaqus launcher 与版本要求（机器本地） |
+| `config/datacheck_runtime.example.json` | Data Check 执行策略（cpus、standard_parallel） |
+| `config/solve_runtime.example.json` | Solve 执行策略（cpus、standard_parallel） |
 
-`*.example.json` files are tracked, portable templates. Copy one to the same
-name with `.local.json` (that suffix is git-ignored) to configure your
-machine. Runtime policy resolution order: CLI flags → `*.local.json` →
-built-in safe default. Local configs never enter the repository.
+`*.example.json` 是纳入版本管理的可移植模板。复制为同名 `.local.json`（该后缀被
+git-ignored）即可配置本机。runtime 策略解析顺序：CLI 参数 → `*.local.json` → 内置
+safe default。本地配置永不进入仓库。
 
-## 11. Typical workflow
+## 单曲面标准流程
 
-1. `prepare-mesher` → run the frozen CGAL mesher → `mesh-post`/`mesh-check`
-   to obtain a validated mesh bundle.
-2. `build-physical` with the bundle and your physics/material configs → a
-   static-validated `physical.inp` plus `model_manifest.json`.
-3. `datacheck` with the build attempt → Abaqus itself judges the deck
-   (`DATACHECK_PASSED` or `DATACHECK_COMPLETED_WITH_WARNINGS` are accepted;
-   both require the `ANALYSIS DATACHECK COMPLETE` marker and zero errors).
-4. `solve` with the datacheck attempt → real analysis, judged by return code
-   + a stdout completion token naming this exact job + the `.sta` completion
-   marker + fatal diagnostics + required artifacts + the target step time.
-5. (M4, not implemented) extract the ODB and run mechanics/curve QA.
+1. `prepare-mesher` → 运行冻结的 CGAL mesher → `mesh-post`/`mesh-check`，
+   得到已验证网格 bundle。
+2. 用 bundle 与 physics/material 配置运行 `build-physical` → 静态验证通过的
+   `physical.inp` 与 `model_manifest.json`。
+3. 用 build attempt 运行 `datacheck` → 由 Abaqus 本身判定 deck
+   （`DATACHECK_PASSED` 或 `DATACHECK_COMPLETED_WITH_WARNINGS` 均算接受；
+   两者都要求 `ANALYSIS DATACHECK COMPLETE` 标记且 0 error）。
+4. 用 datacheck attempt 运行 `solve` → 真实分析；完成判定依据：
+   return code + 指名本作业的 stdout 完成 token + `.sta` 完成标记
+   （`THE ANALYSIS HAS COMPLETED SUCCESSFULLY`）+ 达到 target step time + ODB 非空。
 
-Every stage refuses to overwrite an existing attempt directory and keeps all
-raw evidence — including failures.
+## attempt 与结果目录
 
-## 12. Attempt / artifact structure
+**核心不变量：已存在的 attempt 目录永不被覆盖、永不被清理。**
 
-Each attempt directory contains (depending on the stage):
+- 每次运行必须使用新的 `work/<attempt>` 目录；目标目录已存在时直接报
+  `OUTPUT_EXISTS` 并拒绝执行（有测试锁定）。
+- 失败的 attempt（包括误判、中断实验、意外重复运行）逐字保留，任何结论都应能从
+  原始 `.dat/.msg/.sta/.odb` 文件与报告重新推导。
+- **partial ODB 不是成功结果**：solve 只有在 `.sta` 完成标记 + stdout 完成 token +
+  target step time 达标 + ODB 非空同时满足时才判 `SOLVE_COMPLETED*`。被外部中断
+  （例如系统重启）留下的部分 ODB 一律视为无效 solve 证据。
 
-```
-physical.inp                top-level deck (fixed-order *Include graph)
-ingredients/                shell mesh + PBC equations + model inputs
-blocks/                     material/section, platens, BCs, contact, step, outputs
-model_manifest.json         M1 model identity and static-validation state
-datacheck_report.json       M2: status, diagnostics, execution policy, artifacts
-solve_report.json           M3: status, completion evidence, wall_time_s, ODB info
-*.dat *.msg *.sta *.odb …   raw Abaqus evidence (never deleted, never cleaned)
-command.json stdout.txt stderr.txt
-```
+## runtime 配置
 
-Attempts are immutable: a stage never writes into another stage's directory,
-and existing attempt directories are never overwritten.
+- Data Check 执行策略：`config/datacheck_runtime.example.json`（本机覆盖：
+  `config/datacheck_runtime.local.json`）。
+- Solve 执行策略：`config/solve_runtime.example.json`（本机覆盖：
+  `config/solve_runtime.local.json`）。
+- 内置 safe default 为 `cpus=1, standard_parallel=solver`；开发工作站验证过的
+  preferred profile 为 `cpus=4, standard_parallel=solver`。
+- 已知机器特定问题：默认 `standard_parallel=all` 在本机 General Contact
+  preprocessing 中可复现触发 threads-per-domain ERROR。详见
+  `docs/TROUBLESHOOTING.md`（含 HIGH-PRIORITY DEFERRED PERFORMANCE DEBT 登记与
+  后续实验方案）。
 
-## 13. Runtime profiles
+## 当前验证结果
 
-Execution policies (cpus / standard_parallel) are machine/runtime-local:
-they only appear on the Abaqus command line and in the reports — never
-inside `physical.inp` — so the same deck can run with different profiles on
-different machines, and the model identity keys never change.
+- **M1**（physical INP writer）：DONE——真实 Fig.1 网格 bundle 冒烟通过，13/13 静态
+  检查 PASS（`work/fig1_build_m17_smoke_001`）。
+- **M2**（Physical Data Check）：DONE——自动 `physical.inp` 通过真实 Abaqus 2026
+  Data Check：0 error / 10 warnings 保留（`work/fig1_datacheck_m2_final_001`）。
+- **M3**（单曲面 Solve）：DONE——20% 验证算例真实求解完成：
+  `SOLVE_COMPLETED_WITH_WARNINGS`、last_step_time=1.00=target、0 error、17 warnings
+  保留、完整 ODB（`work/fig1_solve_m3_20pct_003`，cpus=4, standard_parallel=solver）。
+- M2 的 10 条 warning（General Contact double-sided facets、STRAINFREE 调整比例、
+  主面两侧 8 组相邻 secondary nodes）与 solve 的 7 条 zero-moment warning
+  **保留为 M4 的 QA 义务**——未白名单，未证明无害。
 
-- **Portable conservative fallback**: `cpus=1, standard_parallel=solver`.
-- **Development workstation validated profiles**: `cpus=4, solver` and
-  `cpus=8, solver` (both execution-level validated on the Fig.1 20% case;
-  4 CPUs was the faster configuration on this machine — see
-  docs/TROUBLESHOOTING.md).
-- `standard_parallel=all` reproduces a threads-per-domain failure during
-  General Contact preprocessing on the development workstation (the manual
-  baseline model fails identically). Other machines must not assume they
-  need the same workaround; see docs/TROUBLESHOOTING.md.
+## 30曲面阶段性验证（2026-09-15/16）
 
-## 14. Validation evidence
+使用 `reference/selected_30_diverse_cases_report.md` 中挑选的 30 个明显不同的周期曲面
+方程，在统一 20% physics 配置下运行自动化链的阶段性实验：
 
-- Fig.1 physical model: static validation PASS (13 checks), real Data Check
-  accepted (`0 errors`, 10 warnings retained), real 20% solve completed
-  (`SOLVE_COMPLETED_WITH_WARNINGS`, target step time reached, 0 errors,
-  17 warnings retained, ODB artifact 16,075,836 bytes).
-- Test suite: 142 core tests + 8 Pixi boundary tests, all passing (synthetic
-  fixtures only; no test depends on real Abaqus or real Fig.1 results).
-- The M2 warnings (double-sided General Contact facets, STRAINFREE adjustment
-  ratio, 8 adjacent secondary nodes on opposite sides of the main surface)
-  and the solve warnings (zero moment) are **retained as QA obligations for
-  M4** — not whitelisted, not proven harmless.
+- **30 个曲面进入自动化测试**。
+- **28 / 30 自动网格通过**（ref30_01：stage05 周期性校验未过；ref30_22：CGAL 崩溃）。
+- **28 / 28 physical build 通过**。
+- **28 / 28 Abaqus Data Check accepted**（0 个 Data Check 失败）。
+- 4 个进入真实 Solve，**0 个完成**：
+  - ref30_02：收敛停滞后人工终止（step time ≈0.312，增量缩至 ~1e-7）；
+  - ref30_03：TOO MANY ATTEMPTS（step time ≈0.39 中断，2 errors）；
+  - ref30_04：收敛停滞后人工终止（step time ≈0.532）；
+  - ref30_05：推进到 step time ≈0.979 时被 **Windows Update（KB5129195）强制重启中断**。
+- **本次实验没有得到完整有效 ODB**；ref30_05 的部分 ODB 无完成标记，不作为成功结果。
 
-## 15. Known limitations
+结论：这证明 **mesh → build → Data Check 已经在一组明显不同的曲面上得到初步泛化
+验证**；但正式 batch/recovery framework 尚未完成，solve 层面的收敛性与失败分类仍待
+M4 之后的系统研究。实验详情见 `docs/EXPERIMENT_30_SURFACES_20260915.md`。
 
-- Single cell, lateral XY PBC only; no 3D PBC, no n×n×n.
-- Demo surrogate material — not experimentally calibrated data.
-- M2/M3 warnings retained (contact initialization, zero moment) need
-  mechanics QA before any scientific use.
-- 30% compression target is unproven in automation (a historical manual 30%
-  attempt did not converge; see docs/TROUBLESHOOTING.md).
-- No ODB extraction, no batch, no retry/watchdog yet; a solve timeout leaves
-  incomplete structured evidence (logged as technical debt for M7).
-- Validated only on the development workstation with Abaqus 2026 and the
-  Fig.1 20% validation case; other machines/versions/cases are untested.
+## 已知限制
 
-## 16. Troubleshooting
+- 单胞、仅横向 XY PBC；无 3D PBC、无 n×n×n。
+- demo surrogate 材料——非实验标定数据。
+- M2/M3 warnings（接触初始化、zero moment）在任何科学使用前需要力学 QA。
+- 30% 压缩目标在自动化中未验证（历史手工 30% 尝试未收敛；见
+  `docs/TROUBLESHOOTING.md`）。
+- 无 ODB 提取、无 batch、无 retry/watchdog；solve 超时会留下不完整的结构化证据
+  （登记为 M7 技术债）。
+- 仅在开发工作站（Abaqus 2026）与 Fig.1 20% 验证算例上验证；其他机器/版本/算例未测试。
+- 30 曲面实验中 4 个 solve 尝试均未完成（收敛停滞 ×2、数值失败 ×1、外部重启中断 ×1）；
+  失败分类见 `docs/TROUBLESHOOTING.md`。
 
-See `docs/TROUBLESHOOTING.md` — real failures from this project with their
-diagnosis paths and current status: the parallel preprocessing failure, the
-falsified `jleConfig` hypothesis, the `.sta` parser bug, Data Check warning
-signatures, the solve timeout caveat, and how failed runs are diagnosed and
-preserved.
+## 故障排查
 
-## 17. Historical development records
+见 `docs/TROUBLESHOOTING.md`——本项目真实失败案例及其诊断路径与当前状态：并行
+preprocessing 失败、被证伪的 `jleConfig` 假设、`.sta` parser bug、Data Check warning
+签名、solve timeout 注意事项、30曲面临时 runner 的 double-reserve bug、Windows Update
+强制重启事件、difficult solve cases，以及失败运行如何诊断与保全。
 
-Development and debugging history is deliberately preserved — including
-failed hypotheses, the 30% non-convergence record, the duplicate-solve
-incident and the parser false negative:
+## 历史开发记录
 
-- `docs/HISTORICAL_v0.1_README.md` — the full superseded v0.1 README.
-- `docs/HANDOFF_CURRENT.md` — current takeover snapshot.
-- `docs/PROJECT_STATUS.md` — validated engineering facts and evidence levels.
-- `docs/IMPLEMENTATION_STATUS.md` — per-milestone implementation history.
-- `docs/IMPLEMENTATION_PLAN.md` — planned, active and deferred work.
-- `docs/LOCAL_ENVIRONMENT.md` — development-machine evidence
-  (`[LEGACY]` Conda sections retained for reproducibility; the current
-  workflow is Pixi-only).
-- `docs/TROUBLESHOOTING.md` — failures and debugging lessons.
+开发与调试历史被有意完整保留——包括失败假设、30% 非收敛记录、重复 solve 事件与
+parser 误判：
 
-## 18. Roadmap
+- `docs/HISTORICAL_v0.1_README.md` —— 完整的被取代 v0.1 README。
+- `docs/HANDOFF_CURRENT.md` —— 当前接管快照。
+- `docs/PROJECT_STATUS.md` —— 已验证工程事实与证据分级。
+- `docs/IMPLEMENTATION_STATUS.md` —— 逐里程碑实现历史。
+- `docs/IMPLEMENTATION_PLAN.md` —— 计划中、进行中与延后的工作。
+- `docs/LOCAL_ENVIRONMENT.md` —— 开发机证据（`[LEGACY]` Conda 章节为复现而保留；
+  当前工作流仅用 Pixi）。
+- `docs/TROUBLESHOOTING.md` —— 失败与调试经验。
+- `docs/EXPERIMENT_30_SURFACES_20260915.md` —— 30曲面阶段性验证实验记录。
 
-M0 environment/baseline ✅ → M1 physical INP writer ✅ → M2 Physical Data
-Check ✅ → M3 single-job solve ✅ → **M4 ODB extraction + raw-result
-integrity (next)** → M5 single-case closed loop → M6 mesh automation →
-M7 reliability engineering → M8 batch. Details:
-`docs/PROJECT_ROADMAP.md`.
+## 路线图
 
-## 19. Documentation index
+M0 环境/baseline ✅ → M1 physical INP writer ✅ → M2 Physical Data Check ✅ →
+M3 单作业 solve ✅ → **M4 ODB 提取 + raw result integrity（下一步）** →
+M5 单算例闭环 → M6 网格自动化 → M7 可靠性工程 → M8 batch。详见
+`docs/PROJECT_ROADMAP.md`。
 
-| Document | Role |
+## 文档索引
+
+| 文档 | 角色 |
 |---|---|
-| `README.md` | Public entry point (this file) |
-| `AGENTS.md` | AI/contributor coding rules |
-| `docs/PROJECT_ROADMAP.md` | Stable architecture and milestone definitions |
-| `docs/PROJECT_STATUS.md` | Validated engineering facts |
-| `docs/IMPLEMENTATION_STATUS.md` | Detailed implementation history |
-| `docs/IMPLEMENTATION_PLAN.md` | Planned and deferred work |
-| `docs/HANDOFF_CURRENT.md` | Current developer/AI takeover snapshot |
-| `docs/LOCAL_ENVIRONMENT.md` | Historical/current developer-machine evidence |
-| `docs/TROUBLESHOOTING.md` | Failures, debugging and lessons learned |
-| `docs/HISTORICAL_v0.1_README.md` | Superseded v0.1 README (historical) |
-| `docs/VERIFICATION.md` | Historical verification evidence |
-| `docs/Abaqus_Automation_Design_v1.0.md` | Original design document (historical architecture reference) |
-| `docs/LOCAL_EVIDENCE.json` / `docs/source_inventory.json` | Historical local evidence snapshots (not portable configuration) |
+| `README.md` | 公共入口（本文件） |
+| `AGENTS.md` | AI/贡献者编码规则 |
+| `docs/PROJECT_ROADMAP.md` | 稳定架构与里程碑定义 |
+| `docs/PROJECT_STATUS.md` | 已验证工程事实 |
+| `docs/IMPLEMENTATION_STATUS.md` | 详细实现历史 |
+| `docs/IMPLEMENTATION_PLAN.md` | 计划与延后工作 |
+| `docs/HANDOFF_CURRENT.md` | 当前开发者/AI 接管快照 |
+| `docs/LOCAL_ENVIRONMENT.md` | 历史/当前开发机证据 |
+| `docs/TROUBLESHOOTING.md` | 失败、调试与经验教训 |
+| `docs/HISTORICAL_v0.1_README.md` | 被取代的 v0.1 README（历史） |
+| `docs/VERIFICATION.md` | 历史验证证据 |
+| `docs/EXPERIMENT_30_SURFACES_20260915.md` | 30曲面阶段性验证实验记录 |
+| `docs/Abaqus_Automation_Design_v1.0.md` | 原始设计文档（历史架构参考） |
+| `docs/LOCAL_EVIDENCE.json` / `docs/source_inventory.json` | 历史本地证据快照（非可移植配置） |
 
 ## License
 
-A repository license has not yet been selected.
+仓库许可尚未选定。
