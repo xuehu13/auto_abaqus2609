@@ -1,6 +1,4 @@
 {
-  "case_id": "fig1",
-  "surface_expression": "2.3*cos(X)*sin(Z) + 1.9*cos(Y)*cos(Z) - 0.6",
   "iso_level": 0.0,
   "unit_cell_size_mm": 10.0,
 

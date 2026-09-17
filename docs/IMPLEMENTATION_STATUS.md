@@ -1,3 +1,7 @@
+> **[SUPERSEDED 2026-09-16]** ??????????????identity v2 / staging planner /
+> ?? schema ???????????? CLI ???????????? `README.md`?
+> `AGENTS.md`?`docs/HANDOFF_CURRENT.md`?????????????????????
+
 # v0.1 实施状态与后续接口
 
 ## M1/M2/M3 进度（M1 checkpoint 2026-09-15 → BUILD complete；M2 checkpoint 2026-09-15 → COMPLETED_WITH_WARNINGS；M3 checkpoint 2026-09-15 → **M3 DONE, COMPLETED_WITH_WARNINGS**；Pre-M4 consolidation checkpoint 2026-09-15 → DONE；30曲面阶段性验证 2026-09-15/16 → Phase A DONE / Phase B 0 完成）
@@ -19,6 +23,30 @@
   （`docs/IMPLEMENTATION_PLAN.md` / `docs/TROUBLESHOOTING.md`）。
 - 文档语言整理：面向人的文档中文化（README/TROUBLESHOOTING 等），技术术语与
   状态枚举保留英文；历史资料全部保留并加注状态标记。
+
+### v2 Phase 0/1：contract hardening（2026-09-16）
+
+定位：review 后经用户授权的"先锁地基"轮次。**不拆架构、不移动代码目录、不改变 Fig.1
+已验证的力学模型行为**；未运行任何 Abaqus。
+
+- **Phase 0 冻结回归基线**：新增 tracked fixture
+  `tests/fixtures/fig1_20pct_regression/{baseline_fingerprints.json, semantic_model.json,
+  README.md}`（10 个 deck 输入 SHA256，经 4 个独立来源 + live 文件交叉核对，
+  `cross_check=AGREE`；附物理语义快照与完成证据；ODB SHA 仅作 artifact 身份）。
+  新增 `pipeline/semantic_deck.py`（只读语义提取器）与
+  `tests/test_regression_baseline.py`（14 项，含"用 tracked config + 本地 mesh bundle
+  重建 deck 并与 10 个 SHA 逐字节比对"与"注释变化 vs 物理变化可区分"）。
+- **Phase 1 契约修复**：新增 `pipeline/config_schema.py` 与 `pipeline/abaqus_env.py`，
+  在 `pipeline/common.py` 增加 `require_*` validator；physics/numerics/material/outputs/
+  quality/case 严格化（未知键、`schema_version`、NaN/Inf）；QA 阈值前置有限性校验；
+  build→datacheck→solve 两级 SHA 完整性门（`SOURCE_BUILD_ARTIFACT_MISMATCH` /
+  `SOURCE_DATACHECK_ARTIFACT_MISMATCH`）；staging 集合改为派生自 build 自身记录；
+  structured release gate（路径年份不再冒充 release，fail closed）；Abaqus 子进程环境隔离
+  （`command.json.abaqus_env_blocked_vars` 留证）。
+- **有意的 breaking CLI 变化**：科学输入（`--case`/`--physics`/`--material`/`--numerics`/
+  `--outputs`/`--policy`）与 `--job-name` 改为必填，取消 `fig1_*` 默认值与 example 隐式默认。
+- 测试：core 199（151 原有 + 34 hardening + 14 regression）+ boundary 8，全部 PASS。
+- 状态表述：本轮**不**改写 M1/M2/M3 的验证结论（仍为 2026-09-15 的真实运行结果）。
 
 ### M1-1 已完成：physical builder scaffold
 - `pipeline/physical_builder.py` 与 `run.py build-physical` CLI（Pixi default 守卫不变，现有命令语义未改）。
@@ -180,3 +208,101 @@ def export_dataset(accepted_results, export_profile, export_dir):
 ## 为什么不在 v0.1 假装接通生产运行
 
 本次输入只有文档与网格源码，沒有实际生成的 Fig.1 网格、手工 physical.inp、ODB、CGAL exe，也没有当前环境可调用的 Abaqus。强行把尚未逐关键字对照的 writer 标成生产可用，会把错误扩散到后续批次。当前接口与基础函数已可审查，完整 INP 接通后可以直接进入真实本机验证。
+
+## v2 Phase 2：配置语义与 identity 重构（2026-09-16，已完成，未运行 Abaqus）
+
+- 新增 `pipeline/specs.py`：`ModelSpec` / `MaterialSpec` / `SolverSpec`（Standard Dynamic
+  Implicit）/ `OutputSpec` / `CaseSpec`（Surface + Mesher + Tolerance + Meshcheck）/
+  `RuntimeSpec`，以及 identity v2（`physical_model_id`、`solver_spec_id`、
+  `output_spec_id`、`build_artifact_id`、`build_input_id`）与 `mesh_identity`
+  （节点 / 连通 / 周期配对数组的字节指纹）。
+- renderer 契约改变：`_render_material_section(MaterialSpec, manifest)`、
+  `_platen_plan(PlatenSpec, manifest)`、`_render_rigid_platens(PlatenSpec, manifest)`、
+  `_render_boundary_conditions(ModelSpec, manifest)`、
+  `_render_contact(ModelSpec, SolverSpec)`、
+  `_render_step_and_loading(ModelSpec, SolverSpec, manifest)`、`_render_outputs(OutputSpec)`；
+  raw config dict 入口 `_load_numerics` / `_load_outputs` 已删除（solver/output 归一化
+  统一在 `specs.py`）。`_render_outputs` 在渲染时把 region 角色映射为内部 NSET 名，
+  deck 文本不变。
+- `prepare_fe` 写出 `model_spec` / `material_spec` / `mesh_identity` / `identity_payload`
+  与 v2 identity；builder 用 `spec_payload` 与 ingredients 对比，不一致 →
+  `MODEL_SPEC_MISMATCH`（拒绝"两次读取之间配置被改"的 deck）。
+- build manifest schema 2：`identity`（v2 + legacy alias）、
+  `spec.{model,solver,output,material}`、`metadata`、`unused_config_fields`、
+  `normalized_away`、`config_files`（path + SHA）；不再 echo 原始 config dict。
+  `build_report.schema_version=2` 并记录 identity 与由 `physical.inp` + includes SHA
+  派生的 `build_artifact_id`。
+- `mesher_adapter.prepare` 与 `pixi mesh` 走 `normalize_case` + `vendor_payload()`；
+  实测写出的 `engine/config/case.json` 与源 config 内容完全一致（冻结 vendor 无感）；
+  `iso_level != 0` 的错误码由 `CONFIG_UNSUPPORTED` 统一为 `NOT_IMPLEMENTED`。
+- DEAD/FAKE 字段（baseline 值 = 兼容断言，其余合法 Abaqus 值 = `NOT_IMPLEMENTED`）：
+  `boundary_mode`、`repeats`、`unit_system`、`amplitude`、`macro_shear`、
+  `rigid_body_policy`、`platens.type` / `initial_z`、
+  `contact.{normal,allow_separation,tangential,shell_self_contact}`、
+  `material.rate_dependent`、`material.{stress_measure,strain_measure}`、
+  `case.iso_level`、`case.abaqus.element_type`、
+  outputs 的 restart / schedule type / request kind / field mode。
+- metadata 化（不进入任何 id）：`profile_id`、`note`、`validated_to_target`、
+  `platens.initialization_profile`、`material_id`、`source`、`validated_for_experiment`、
+  `allow_production_dataset`、`calibrated_strain_range`、`outputs.profile_id`、numerics `note`。
+- 退出 solver 配置：`cpus_per_job`、`maximum_concurrent_solves`、
+  `max_attempts_including_base`、`solver_wall_limit_s`、`stagnation_*`
+  （记录为 unused，不进入任何 spec / identity；runtime 真值仍在 `*_runtime*.json` 与 CLI，
+  `solver_wall_limit_s` 与硬编码 timeout 的双真值状态到此结束）。
+- `slip_tolerance` 与 `time_period_s` 语义归位到 solver spec（不进入
+  `physical_model_id`）；`friction`、目标压缩应变、相对密度、板宽比、板网格尺寸、
+  rotational PBC 仍进入 `physical_model_id`。
+- 测试：新增 `tests/test_normalized_specs.py`（43 项）；core 242 + boundary 8 全 PASS；
+  `pixi run check` / `plan` / `cli-help` exit 0。
+- 回归：Fig.1 byte regression PASS（`physical.inp` + 9 include 与冻结 SHA 逐字节一致）、
+  semantic regression PASS；30/30 历史 build 通过 artifact 门、30/32 历史 datacheck 被
+  solve loader 接受（2 个历史 FAILED 本就不该接受）；历史 legacy manifest
+  （无 `spec` 段）仍可从 `physics.time_period_s` 读出 target step time。
+- 未运行 Abaqus；未改 `vendor/`、`reference/`；未移动代码目录；未 commit / push。
+
+## v2 Phase 3A：runtime / staging 单真值（2026-09-16，已完成，未运行 Abaqus）
+
+- 新子包 `pipeline/runtime/`（未移动任何现有目录）：`artifacts.py`（`ArtifactRole` +
+  `ArtifactRecord` + manifest/graph 读取 + `build_artifact_id` 重算）、`staging.py`
+  （`StagingPlan` / `plan_datacheck_staging` / `plan_solve_staging` / `verify_source` /
+  `stage` / `verify_staged`）、`config.py`（唯一 runtime resolver）、`job.py`（job name）。
+- 共享 leaf：`pipeline/abaqus_launcher.py`（`resolve_launcher` / `query_release` /
+  `enforce_release_gate` / `parse_release_year` / `load_environment_config`）、
+  `pipeline/inp_keywords.py`（`keyword_sections` / `parse_include_paths`）、
+  `diagnostics.categorize_message`（warning 分类器唯一实现）。datacheck/builder 保留同名
+  alias，所以 `pdc.query_release` 等既有调用点与 `mock.patch` 目标不变。
+- **build 发布 artifact manifest**：`build_report.artifacts` + `model_manifest.artifacts`
+  （`path` / `role` / `sha256` / `required_for_datacheck` / `required_for_solve`），
+  含 `physical.inp` + 9 include + `ingredients/pbc_map.json` + `ingredients/model_inputs.json`。
+  `build_report.schema_version` 仍为 2（`includes` 由 `artifacts` 取代）。
+- **staging 只由 manifest 驱动**：datacheck/solve 的 `_STAGED_DECK_FILES`、
+  `_PROVENANCE_FILES`、`_stage_inputs`、`_stage_solve_inputs`、两个
+  `_resolve_execution_policy` 全部删除；`_load_source_build` / `_load_accepted_datacheck`
+  只保留"来源是否合法"的判断。
+- **deck graph ↔ manifest 交叉核对**：deck 引用但 manifest 未记录 →
+  `SOURCE_BUILD_ARTIFACT_MISMATCH` / `SOURCE_DATACHECK_ARTIFACT_MISMATCH`（点名 include）；
+  manifest 记录但 deck 未引用 / 多个 deck_root / 不安全 include 路径 → `ARTIFACT_GRAPH_MISMATCH`。
+- **provenance staging**：`pbc_map.json`、`model_inputs.json`、`source_build_report.json`
+  （其 SHA 由 manifest 记录）都进入两级证明；`source_model_manifest.json` 无法自我哈希 →
+  明确 `sha_source=self_recorded_at_staging`，自下一 stage 起进入证明。provenance 失败用
+  `PROVENANCE_ARTIFACT_MISMATCH`，与 deck 失败码分开。缺失源文件 → `SOURCE_ARTIFACT_MISSING`。
+- **identity chain**：datacheck `source_build` / solve `source_datacheck` 都记录
+  `case_id`、`physical_model_id`、`solver_spec_id`、`output_spec_id`、`build_artifact_id`；
+  后者从实际 deck 字节重算并与 build 声明比对，不符 → `BUILD_ARTIFACT_ID_MISMATCH`。
+- **job name**：`<case_id>_dc` / `<case_id>_solve` 派生（`case_id` 由 prepare_fe 从 mesh report
+  记入 `model_inputs.json`，builder 写入 `model_manifest.case_id`，属 provenance）；
+  `--job-name` 变为可选覆盖；report/command 记 `job.name` + `job_name_source`。
+- **runtime**：`RuntimeSpec` 仍由 specs.py 定义；解析统一在 `runtime/config.py`
+  （CLI > `config/<stage>_runtime.local.json`（schema 1，新增可选 `timeout_s`）> safe default），
+  `standard_parallel` 标为 Standard-only 并对非 Standard 后端 `NOT_IMPLEMENTED`。
+  `config/*_runtime.example.json` 增加 `timeout_s`（3600 / 14400）。
+- **report schema 2**：datacheck/solve report 用 `artifacts`（staged 输入 manifest，含
+  `recorded_sha256` / `source_path` / `sha_source`）、`job`、`staging`（plan 快照）、
+  `abaqus_output`（原 `artifacts` 的 Abaqus 生成文件信息改名）；`source_build.integrity` /
+  `source_datacheck.integrity` 拆出 deck / provenance / self-recorded / staged 计数。
+  旧 report（schema 1 的 `staged_files`）由 `runtime/artifacts._legacy_stage_records`
+  映射为同一形状，无两者 → `SOURCE_REPORT_SCHEMA_UNSUPPORTED`。
+- 测试：新增 `tests/test_runtime_staging.py`（40 项，含 staging 往返、integrity 失败码、
+  identity chain、runtime 解析、job naming、架构守卫 AST 检查）；core **282** + boundary 8 全 PASS。
+- 回归：Fig.1 byte regression PASS（10/10）、semantic PASS，五个 v2 identity 与 Phase 2 相同；
+  30/30 历史 build、30/32 历史 datacheck 兼容；未运行 Abaqus；未 commit/push。

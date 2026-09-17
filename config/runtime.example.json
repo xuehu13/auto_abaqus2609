@@ -1,0 +1,24 @@
+{
+  "abaqus": {
+    "launcher": null,
+    "release_required": "2026"
+  },
+  "cgal": {
+    "executable": null
+  },
+  "results": {
+    "keep_odb": true
+  },
+  "datacheck": {
+    "cpus": 1,
+    "standard_parallel": "solver",
+    "mp_mode": null,
+    "timeout_s": 3600
+  },
+  "solve": {
+    "cpus": 4,
+    "standard_parallel": "solver",
+    "mp_mode": null,
+    "timeout_s": 14400
+  }
+}

@@ -1,0 +1,6 @@
+# One case per line: case_id + surface_expression (+ optional "overrides" for a single
+# case). Everything else comes from config/case_defaults.json; # starts a comment.
+# Both example cases were run end-to-end on Abaqus 2026 (see README "真实验证状态").
+# Replace these lines with your own 20,000 surfaces.
+{"case_id": "fig1", "surface_expression": "2.3*cos(X)*sin(Z) + 1.9*cos(Y)*cos(Z) - 0.6"}
+{"case_id": "diverse_02", "surface_expression": "2.9*sin(2*Y)+4.0*sin(Y)*cos(Z)+1.5*sin(X)*sin(X)-0.7"}

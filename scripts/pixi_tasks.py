@@ -179,11 +179,19 @@ def mesh(args):
         source = resolve(args.from_attempt) / "engine"
         if not source.is_dir():
             raise ValueError("Source attempt must contain engine/")
-    case_path = source / "config/case.json" if source else resolve(args.case)
+    case_path = source / "config/case.json" if source else (resolve(args.case) if args.case else None)
+    if case_path is None:
+        raise ValueError("mesh env/pre requires --case: there is no default case config "
+                         "(a Figure-1 config must never be used silently as a generic default)")
     case = json.loads(case_path.read_text(encoding="utf-8-sig"))
     sys.path.insert(0, str(CODE))
     from pipeline.common import safe_id
-    case_id = safe_id(case["case_id"])
+    from pipeline.mesh import load_case, vendor_case
+    # Validate the first-party case config, then hand the frozen vendor the flat
+    # legacy JSON it understands.
+    case_doc = load_case(case_path)
+    case = vendor_case(case_doc)
+    case_id = safe_id(case_doc["case_id"])
     # Source must contain unchanged Python algorithms, never arbitrary supplied code.
     names = [p.name for p in stage_files] + [str(p.relative_to(VENDOR)).replace("\\", "/") for p in (VENDOR / "meshlib").glob("*.py")]
     if source:
@@ -279,7 +287,7 @@ def main():
     p = sub.add_parser("mesh", description="Existing frozen stages in a NEW copied attempt; paths are workspace-relative")
     p.add_argument("stage", choices=("env", "pre", "post", "check"))
     p.add_argument("--out", required=True)
-    p.add_argument("--case", default=str(CODE / "config/cases/fig1.json"))
+    p.add_argument("--case", help="Case/geometry config; required for mesh env/pre (no default case config exists)")
     p.add_argument("--from-attempt")
     p = sub.add_parser("build-cgal")
     p.add_argument("--check-only", action="store_true")

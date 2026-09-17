@@ -1,0 +1,42 @@
+{
+  "case": "fig1",
+  "description": "Frozen deck fingerprints of the Fig.1 20% implicit compression case. Artifact identity only: it is NOT a claim that Abaqus acceptance or the solution is reproducible.",
+  "source_attempt": "work/fig1_solve_m3_20pct_003",
+  "configs": {
+    "simulation": "config/simulation.json",
+    "case": "config/cases/fig1.json"
+  },
+  "mesh_source_hashes": {
+    "npz": "ef9197791cbdd5cbfb05d64f1367137279fc09daeafba1ca871c08f1bf5c74ec",
+    "report": "047268c98d682388a3474719b5cb730f1e3f2a83dfcea0d03c45d6dbb34b22e0",
+    "pairs_csv": "412ec022147b7969d5bcaf6d8499f9a05b47d74eac9553c653e2f78de5949369"
+  },
+  "mesh_source_note": "The npz and the pairs CSV must match byte-exactly. A shell_report.json copy may differ in non-semantic path metadata, so the report is validated through the mesh contract instead of by SHA.",
+  "deck_sha256": {
+    "physical.inp": "ad93e91b2fbf7e7266b0d96254f82b5d4f93fa45280d029ddaa1f661e9038dff",
+    "ingredients/shell_mesh.inc": "42bf53cf27fcedbdb6c4dbbd25fc5692d8734c28cbbd10fe1ab39df8e979578a",
+    "ingredients/lateral_pbc.inc": "7dfe3325b919d3fe07f3db43754a58475f09ca6e6cbaf4767309c4bdf2ae7c4d",
+    "blocks/material_section.inc": "26f6b6c770953b6db3fab461180495004596131c70b396377acd74cbc297072b",
+    "blocks/rigid_platens.inc": "980155a50340a3d853b99ca4336c89ccf6472e630f7ff0fdab9251da43608880",
+    "blocks/boundary_conditions.inc": "47aee20a47ba7cdddf2b90c8d8c76bdb7c05eadc16f18cbf9ee65735bd3314d5",
+    "blocks/contact.inc": "670c983dbb4299aa9283de099c3dd908b7f7e8f38238933446b0427dc71418b4",
+    "blocks/step_loading.inc": "79578fa383060d15a50ffcb110444cc731f3cb143fae2b16494f984cb16ffddd",
+    "blocks/outputs.inc": "b4524e5def7105b3304a42cd7343b4b1fd28aaa2ee5f477df029f862b02a70e3",
+    "blocks/step_end.inc": "467346d204a74c039b15d07e67e1ed9919e8638eff0453158ec32a6d8995343e"
+  },
+  "expected_completion": {
+    "status": "SOLVE_COMPLETED_WITH_WARNINGS",
+    "last_step": 1,
+    "last_increment": 59,
+    "last_step_time": 1.0,
+    "target_step_time": 1.0,
+    "error_count": 0,
+    "warning_count": 17
+  },
+  "odb_artifact": {
+    "path": "fig1_m3_solve.odb",
+    "size_bytes": 16075836,
+    "sha256": "2b3a35860f0dbd5b592d8738b33dc95352d3c5db44acfe0bc6bbf025034443a7",
+    "note": "artifact identity only; never a scientific reproduction criterion"
+  }
+}

@@ -14,13 +14,12 @@ PYTHONNOUSERSITE = "1"
 PYTHONDONTWRITEBYTECODE = "1"
 
 [tasks]
-cli = { cmd = "python -B run.py", description = "All existing CLI commands through Pixi default; paths relative to repo root" }
+cli = { cmd = "python -B run.py", description = "All CLI commands through Pixi default; paths relative to repo root" }
 check = { depends-on = [{ task = "check-default", environment = "default" }, { task = "check-geo", environment = "geo" }, { task = "check-cgal", environment = "cgal" }], description = "Check three Pixi runtimes; never launch Abaqus or build/mesh" }
 check-default = "python -B scripts/pixi_tasks.py check default"
 test = { cmd = "python -B scripts/pixi_tasks.py test", description = "Core unittest suite plus Pixi migration boundary tests; evidence in a NEW work attempt" }
 plan = { cmd = "python -B run.py plan" }
 cli-help = { cmd = "python -B run.py --help" }
-prepare-fe = { cmd = "python -B run.py prepare-fe", description = "Existing FE ingredients writer; supply inputs and a NEW --out; no solver" }
 
 # Version evidence: frozen REFERENCE_RESULTS.md, supported by installed metadata.
 # The three scientific packages were pip distributions in the old geo runtime.

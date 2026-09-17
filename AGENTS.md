@@ -1,25 +1,87 @@
-# DiffuMeta 工作区规则
+# auto_abaqus 工作区规则
 
-- 用中文沟通，说明操作目的、实际结果和下一步，面向有工程力学背景的 Python/Codex 新用户。
-- 代码根目录就是仓库根（历史双层 `DiffuMeta_Automation_v0.1/DiffuMeta_Automation_v0.1/` 包装已于 2026-09-14 移除）；在仓库根执行 `run.py` 和测试，工作区顶层即本地 Git 根目录。
-- v0.1 原始交付 artifacts 在 `docs/legacy/`；旧设计/交接是历史证据，不覆盖新查证结果。新会话阅读顺序以上一条"新会话/新 AI 首先阅读"规则为准，不另设第二套入口。
-- 新会话/新 AI 首先阅读：`AGENTS.md` → `docs/HANDOFF_CURRENT.md` → `docs/PROJECT_ROADMAP.md` → `docs/PROJECT_STATUS.md` → `docs/LOCAL_ENVIRONMENT.md` → `docs/IMPLEMENTATION_PLAN.md` → `docs/IMPLEMENTATION_STATUS.md`。`HANDOFF_CURRENT.md` 是快速摘要，不覆盖 current Git state、PROJECT_ROADMAP 和用户明确的新指令。
-- REVIEW_BACKLOG policy：`docs/REVIEW_BACKLOG.md` 是专家/用户/AI 审查意见总账（advisory-only），不是任务队列、需求源或施工授权。普通 coding/debug/test 任务不得默认读取或扫描该文件，它不属于新 AI startup reading sequence。只有用户明确要求 review/triage、明确引用某个 `RB-xxx`，或 active `IMPLEMENTATION_PLAN` 明确引用对应条目时，才读取相关 item（且不因读取扩大当前任务 scope）。条目的 `HIGH`/`OPEN`/`ACCEPTED`/`Next Action` 均不构成施工授权；`DEFERRED`/`REJECTED`/`NO_ACTION` 不得擅自实施。
-- 冻结 `vendor/periodic_surface_mesher_v1.0`。优先在 `pipeline/` 和 `abaqus_worker/` 外层增加接口，不重写网格算法。必要核心修改必须说明原因并做完整回归。
-- `reference/`、`baseline_test/`、外部旧工程及既有结果只读。`reference/` 既有内容只读；只有用户明确授权时，允许使用新的唯一文件名加入新的归档证据；绝不覆盖/修改已有 reference 文件；`reference/` 是 Git-ignored local evidence，不属于仓库真值。新结果使用唯一的 `work/`、`runs/` attempt 目录，拒绝覆盖；保留输入指纹和失败证据。
-- 普通开发统一使用根目录 Pixi workspace：`default` 是 Python 3.11 主控/测试；`geo` 固定历史 clean Fig.1 的 Python 3.10.21、NumPy 2.2.6、SciPy 1.15.3、scikit-image 0.25.2、SymPy 1.14.0；`cgal` 单独管理构建和运行依赖。版本复现不等于新环境已完成网格回归。不得使用 Anaconda Python、conda.exe 或 conda activate 执行新任务。
-- Abaqus 是外部独立运行时；ODB 仅由兼容的 `abaqus python` 只读打开。不得在 Pixi 安装/导入 odbAccess、abaqus、abaqusConstants，不混用两边 NumPy、PYTHONPATH 和 DLL 环境。
-- `conda-forge`、`conda:`、`conda-meta` 和包仓库 URL 是 Pixi 正常包生态信息，禁止按“Conda 残留”删除。MSVC/Windows SDK 是外部工具链，检查但不自动安装。
-- 不改系统 PATH、系统设置或现有 Conda 环境；依赖缺失先说明并采用项目级方案。本机配置和计算结果不得提交 Git，不添加远程或上传。
-- 分开记录“代码已实现”“逻辑测试通过”“真实 Abaqus 验证通过”。Data Check、正常作业结束、目标应变达到、科学质量验收分别判定。
-- 压缩模式保留 X/Y 周期及自由宏观横向伸缩，不擅加 Z-PBC。材料、接触、厚度、加载等物理参数不得在自动重试中偷偷改变。
-- 发现文档、源码、INP、ODB 不一致时列出来源和差异。未知警告或缺失检查进入待复核，不生成虚假 PASS，不外推未达到的 30% 应力。
-- Fig.1、论文与成功手工 INP 只作为当前验证 baseline/profile：材料、厚度、加载、接触、刚板尺寸、网格、分析步、输出等科研变量不得因当前只有一个 baseline 值而被硬编码为长期产品常数；连续/数值型科研参数优先由 config 驱动；合法但当前未实现的物理/数值策略必须显式返回 NOT_IMPLEMENTED，不得静默使用 baseline。
-- 架构或阶段开发开始前必读 `docs/PROJECT_ROADMAP.md`（长期方向与阶段定义）和 `docs/IMPLEMENTATION_PLAN.md`（当前施工顺序与验收）；两者冲突时以 ROADMAP 阶段定义和用户指令为准。仓库结构已定型：不移动代码目录、不修改历史证据、不启动完整求解或批量任务。未经用户明确要求不得 commit/push；用户明确要求 checkpoint 时可以创建本地 commit，但不 push。
-- 在工作区根运行 `pixi run check`、`pixi run test`、`pixi run plan`、`pixi run cli-help`。测试包装仍在实际代码根执行原有 unittest。权限错误与代码缺陷分开记录，不降低测试要求。
-- 网格 tasks 由 Pixi 选择 geo；`mesh-env`/`mesh-pre` 使用新的 `--out work/<attempt>`，`mesh-post`/`mesh-check` 还需 `--from-attempt` 并复制输入后处理，拒绝覆盖。`mesh-check` 只运行已有日志校验器，不提交 Abaqus。`build-cgal --check-only` 只检查外部编译工具链；实际构建必须指定新的 `--out`。
-- Pixi 是普通 Python/C++ 唯一支持的环境管理器；依赖只通过 pixi.toml/pixi.lock 管理，不新建旧管理器环境或激活脚本，不新增个人解释器绝对路径，不随意升级 validated geo。系统裸 python 即使指向其他安装也不作为项目入口。pixi.toml + pixi.lock 是依赖版本唯一真值；`scripts/pixi_tasks.py` 中的 GEO/CGAL 版本字典只是 validated baseline 断言，用于让环境静默劣化时显式失败，不是第二配置源。
-- 使用 `pixi run cli <现有命令>`；run.py 拒绝非 Pixi default 解释器。prepare-mesher 只生成 argv 列表，以明确 workspace 的 Pixi geo/cgal 前缀选择环境；删除 geo_python 和 DLL 路径配置，不拼接命令字符串或使用 shell=True。
-- environment schema 2 仅有 schema_version、abaqus_launcher、abaqus_release_required；自动优先使用被忽略的 environment.local.json，否则使用 launcher=null 的模板。CGAL 通过 --cgal-build 选择锁文件匹配的构建产物，缺失则计划 argv=null，不回退旧程序。Abaqus 是外部调用描述，不能继承 Pixi 的 Python/DLL 环境。
-- 冻结 vendor/tools、vendor YAML、reference、历史 work/ZIP 和旧交接内的环境说明是 LEGACY，不是活动入口；允许保留原文。当前操作以 README 的 Pixi quick-start 为准。
-- 语言规则：项目主要读者是中文工程/科研用户。面向人的 README、使用说明、故障排查和状态说明默认中文；Abaqus/Python/Git/CLI 等技术名称、代码、配置键和状态枚举保持英文。AI-first 文档（HANDOFF/ROADMAP/PLAN/STATUS）可根据机器可读性保留英文。历史资料不因语言统一而删除，只加注状态标记（HISTORICAL/LEGACY/SUPERSEDED 等）。
+## 项目性质
+
+这是一个**科研自用脚本**，不是一个软件产品、框架或平台。目标只有一条流水线：
+
+```
+曲面 → 自动网格 → Abaqus 建模 → Data Check → Solve → 结果提取 → 批量运行
+```
+
+因此：
+
+- **简单优先于抽象**。100 行直接代码能清楚完成的事，不要写成一个框架。
+- **不写产品级兼容层**：不维护 schema v1/v2 双轨、不为旧报告写迁移器、不做未知字段分类框架。
+  格式变了就手工迁移一次。
+- **不做防御性架构**：没有第二个用户、没有下一个运行时、没有未知调用方。校验只保留
+  "明显非法值必须报错"这一层。
+- 新增抽象前先自问：它对"自动网格 + Abaqus 计算"有没有直接作用？没有就删。
+- 核心业务代码保持 5～8 个模块；净删除优先于净新增。
+
+## 常用命令（在工作区根运行）
+
+- `pixi run test` / `pixi run check` / `pixi run plan` / `pixi run cli-help`
+- `pixi run cli run-case --case config/cases/<case>.json --simulation config/simulation.json`
+  （整个单 case，可续跑；`--force` 重跑全部）
+- `pixi run cli run-batch --cases config/cases.jsonl --case-defaults config/case_defaults.json
+  --simulation config/simulation.json [--work-root work/batch_001] [--workers 1]
+  [--retry-failed] [--max-retries 0] [--force]`（批量；本质是逐个调用 `run_case()`）
+- `pixi run cli summarize-batch --work-root work/batch_001`（从各 case 目录重建总表）
+- 单 stage 调试：`pixi run cli mesh | mesh-datacheck | build | datacheck | solve | extract
+  --case config/cases/<case>.json [--simulation config/simulation.json]`
+- 低层 vendor 调试：`pixi run mesh-env|mesh-pre|mesh-post|mesh-check`、`pixi run build-cgal`
+
+## 单 case 布局与求解器选择
+
+- 一个 case 一个目录：`work/<case_id>/{mesh,abaqus,results,status.json,run.log}`；
+  Data Check 与 Solve 就在 `abaqus/` 里跑，**不做 staging、不复制 deck**。
+- 被替换的 stage 目录改名为 `*.previous_<时间戳>` 保留证据，不删除。
+- 续跑依据 `status.json` 里的 stage 状态 + 两个 config **内容** SHA256（case 配置变 → 全部重跑；
+  simulation 变 → build 起重跑）。残留 `RUNNING` 一律当作"上次进程已死"：结果齐全就是 DONE，
+  否则从缺的 stage 继续；不查 PID、不做 heartbeat。
+- 求解器由 `simulation.json` 的 `solver.type` 选择（`standard_dynamic_implicit` /
+  `explicit_dynamic`），两个参数 block 各自独立；renderer 用直接的
+  `if solver == ... elif ... else raise`，不建 backend/plugin/interface 层。
+
+## 批量（batch）
+
+- Batch 只做三件事：读 `cases.jsonl` + `case_defaults.json`（一层合并）、选哪些 case 要跑、
+  把每个 case 的 `status.json`/`summary.json` 汇总成 `batch_summary.csv` / `results_index.jsonl`
+  / `failed_cases.jsonl`。**不重写 stage、不认识 solver、不建数据库**。
+- 一个 worker 跑完一个 case 的完整流程；默认 `workers=1`，由用户自己提高，永不按核数自动并发。
+- 共享的 batch 文件只由主进程写；worker 把结果交回主进程。
+- 单个 case 失败只记录并继续；只有全局错误（输入文件、重复 case_id、defaults 非法、launcher 不可用）
+  才停止 batch。
+- retry 必须用**完全相同**的输入，只补跑失败的 stage。
+
+## 硬约束
+
+- **冻结 `vendor/periodic_surface_mesher_v1.0`**：不修改、不重写网格算法。第一方代码只做
+  配置转换、契约校验、PBC 生成和"调用 vendor + CGAL"。
+- **历史结果只读**：`reference/`、`baseline_test/`、已有 `work/` attempt 永不覆盖、永不修改。
+  新结果一律用新的唯一 `work/<attempt>` 目录；失败也保留证据。
+- **科学参数不得在自动重试中偷偷改变**：材料、接触、厚度、加载、网格等参数一旦确定，
+  retry 必须用同一套输入；发现不一致要显式报错。
+- **Abaqus 是外部独立运行时**：不使用 Pixi 的 Python/DLL 环境启动它；ODB 只由兼容的
+  `abaqus python` 只读打开。不自动启动长时间 solve —— solve 只在用户显式调用时运行，
+  且 `run-case` 会跑 solve，长算例前要先确认。
+- **不 push**（除非用户明确要求）；不添加远程、不上传本机配置或计算结果。
+- 依赖只通过 `pixi.toml` + `pixi.lock` 管理；`default`(py3.11) 跑主控/测试，`geo`(py3.10.21)
+  跑冻结网格，`cgal` 管构建。不使用 Anaconda Python / conda 命令。
+- 不在代码里写死科研变量：element type、E/ν、密度、plastic 表、相对密度、摩擦、slip tolerance、
+  压缩应变、step 时间/增量、输出频率、mass scaling、CPU、超时都应来自 config。
+  内部名字（NSET/ELSET/RP 名、block 文件名、step 名）保持代码常量。
+- **不猜 Abaqus 语法**：新关键字先用真实 Data Check 验证再写进 renderer
+  （例：`*Contact Exclusions` 空数据行会被 2026 版拒绝；Explicit 的完成标记与 Standard 不同）。
+
+## 记录方式
+
+- 分开记录"代码已实现""逻辑测试通过""真实 Abaqus 验证通过"。Data Check 通过 ≠ 收敛 ≠
+  达到目标应变 ≠ 科学质量合格。
+- 不确定或未验证的结论标注为待复核，不生成虚假 PASS。
+- 文档只需维护 `README.md`、`AGENTS.md`、`docs/HANDOFF_CURRENT.md`；其余 docs 标记为
+  SUPERSEDED/LEGACY 后不再同步。
+
+## 语言
+
+面向人的说明默认中文；技术名称、代码、配置键、状态枚举保持英文。

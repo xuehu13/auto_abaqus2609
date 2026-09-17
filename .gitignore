@@ -28,6 +28,8 @@ output/
 *.pem
 *.key
 abaqus_v6.env
+# Machine-local runtime config: Abaqus launcher path, cpus, wall limit.
+/config/runtime.json
 
 # Solver databases, logs, restart files and compiled binaries.
 *.odb

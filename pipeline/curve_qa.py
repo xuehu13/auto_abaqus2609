@@ -1,10 +1,34 @@
 """Checks aligned raw histories. Outputs are NOT complete FE acceptance decisions."""
 import numpy as np
 
+from .common import finite, read_json, require_keys
+
 TARGETS = [0.016, 0.031, 0.055, 0.094, 0.149, 0.165, 0.204, 0.227, 0.267, 0.282, 0.300]
+#: Thresholds the curve check needs. Values are visible draft engineering choices,
+#: never admission criteria for a production dataset.
+_POLICY_KEYS = ("ke_ie_limit", "ae_ie_limit", "energy_floor_Nmm", "startup_ke_max_Nmm",
+                "target_strain_tolerance", "strain_monotonic_tolerance",
+                "stress_sign_tolerance_MPa", "duplicate_stress_tolerance_MPa")
+_POLICY_OPTIONAL = ("schema_version", "policy_id", "calibrated_for_production", "note")
+
+
+def validate_policy(policy, path="<policy>"):
+    """Every threshold must be a finite number; a NaN would silently disable a gate."""
+    policy = require_keys(policy, path, _POLICY_KEYS, _POLICY_OPTIONAL, "QA policy")
+    for key in _POLICY_KEYS:
+        finite(policy[key], key + " (" + str(path) + ")", minimum=0.0)
+    return policy
+
+
+def load_policy(path):
+    return validate_policy(read_json(path), str(path))
 
 
 def assess(columns, height_mm, area_mm2, compression_reaction_sign, policy):
+    # Policy is validated before any comparison: a NaN threshold would make every
+    # comparison False and silently disable the gate, and an unknown key means the
+    # policy the operator wrote is not the policy being applied.
+    validate_policy(policy)
     failures = []
     required = ("time_s", "u3_mm", "rf3_N", "ALLKE", "ALLIE", "ALLAE")
     if any(k not in columns for k in required):
