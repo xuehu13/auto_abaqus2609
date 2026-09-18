@@ -1,0 +1,144 @@
+{
+  "material": {
+    "density_tonne_mm3": 1.1e-09,
+    "youngs_modulus_MPa": 484.0,
+    "poisson_ratio": 0.4,
+    "plastic_table": [
+      [
+        8.0,
+        0.0
+      ],
+      [
+        9.5,
+        0.02
+      ],
+      [
+        11.0,
+        0.05
+      ],
+      [
+        12.5,
+        0.08
+      ],
+      [
+        13.5,
+        0.11
+      ],
+      [
+        14.2,
+        0.147
+      ],
+      [
+        14.5,
+        0.2
+      ],
+      [
+        15.0,
+        0.3
+      ],
+      [
+        15.6,
+        0.5
+      ],
+      [
+        16.3,
+        0.8
+      ],
+      [
+        17.0,
+        1.2
+      ],
+      [
+        18.0,
+        2.0
+      ]
+    ]
+  },
+  "shell": {
+    "element_type": "S3R",
+    "integration_points": 5,
+    "target_relative_density": 0.1
+  },
+  "pbc": {
+    "include_rotational_dofs": true
+  },
+  "platen": {
+    "element_type": "R3D4",
+    "width_factor": 1.8,
+    "mesh_size_mm": 1.0
+  },
+  "contact": {
+    "normal": "hard",
+    "allow_separation": true,
+    "friction": 0.6,
+    "self_contact": true
+  },
+  "loading": {
+    "target_compression_strain": 0.2,
+    "amplitude": "smooth_step"
+  },
+  "solver": {
+    "type": "explicit_dynamic",
+    "standard_dynamic_implicit": {
+      "time_period_s": 1.0,
+      "nlgeom": true,
+      "application": "moderate_dissipation",
+      "initial_acceleration": false,
+      "initial_increment_s": 0.001,
+      "minimum_increment_s": 1e-08,
+      "maximum_increment_s": 0.02,
+      "maximum_increments": 10000,
+      "slip_tolerance": 0.005,
+      "restart_frequency": 0,
+      "field_frequency": 50,
+      "history_frequency": 1,
+      "preselect_history_frequency": 10
+    },
+    "explicit_dynamic": {
+      "time_period_s": 0.006,
+      "field_number_interval": 10,
+      "history_time_interval_s": 6e-05,
+      "field_time_marks": false,
+      "mass_scaling": {
+        "enabled": false
+      }
+    }
+  },
+  "output": {
+    "requests": [
+      {
+        "kind": "energy",
+        "variables": [
+          "ALLAE",
+          "ALLIE",
+          "ALLKE",
+          "ALLPD",
+          "ALLWK",
+          "ETOTAL"
+        ]
+      },
+      {
+        "kind": "node",
+        "region": "RP_TOP",
+        "variables": [
+          "RF3",
+          "U3"
+        ]
+      },
+      {
+        "kind": "node",
+        "region": "RP_X_CTRL",
+        "variables": [
+          "U1"
+        ]
+      },
+      {
+        "kind": "node",
+        "region": "RP_Y_CTRL",
+        "variables": [
+          "U2"
+        ]
+      }
+    ]
+  }
+}

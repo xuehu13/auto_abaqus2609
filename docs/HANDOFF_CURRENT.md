@@ -1,7 +1,7 @@
 # HANDOFF_CURRENT
 
 本文件是当前状态的**唯一真值摘要**（2026-09-17，第 3 轮：批量运行打通；
-2026-09-18 追加第 4 轮：第三方审查修复，见第 8 节）。
+2026-09-18 第 4 轮：第三方审查修复（第 8 节）+ ref30 implicit/explicit 计算实验（第 9 节））。
 其余 `docs/*.md` 均已标记 SUPERSEDED，不再同步。
 
 ## 1. 现在能做什么
@@ -83,6 +83,7 @@ pixi run cli run-batch --cases config/cases.jsonl --case-defaults config/case_de
 - 用真实 `workers=2` 跑一次小批量（确认 license/内存/IO 表现）。
 - 批量级科学验收（接触/PBC/能量筛选）——现在只记录诊断值，不判定。
 - 2 万级规模的实际验证（NTFS 目录数量、磁盘容量、ODB 保留策略）。
+- ref30 实验 T=0.01 组续跑（用户暂停中，见第 9 节；ref30_02 从 solve 续起即可）。
 
 ## 7. 不要做的事
 
@@ -120,3 +121,23 @@ plugin/backend 体系、DAG engine、数据库、worker daemon；不要在 retry
 匹配目标的 policy `CURVE_QA_PASS` 并输出 `stress_at_targets_MPa`。
 **未做真实 Abaqus 复验**（也无需）：本轮未改任何 deck 字节与 Abaqus 调用路径；
 列名变更只影响 results CSV，历史 `work/` 结果保持只读不动。
+
+## 9. 2026-09-18 计算实验：ref30_02–05 implicit（8CPU/all）与 explicit（8CPU, T=0.006/0.01）
+
+用户授权的纯计算实验（不动代码）；配置/驱动/小结在 `experiments/ref30_2to5_20260918/`，
+逐例证据在 `work/exp_ref30_2to5_20260918/<组>/<case>/`，完整记录见 `docs/WORK_LOG.md` 条目 002。
+
+- **implicit 4 例**：datacheck 4/4 通过（**8CPU + standard_parallel=all 未复现 RB-012 的
+  threads-per-domain 错误**）；solve 与历史同位失败——ref30_02 停滞 0.312、ref30_04 停滞
+  0.532（均 1500s 上限 TIMEOUT）、ref30_03 快速 SOLVE_FAILED（364.5s）；**ref30_05 分析实际
+  跑完**（~27–28 min，超出当时墙钟被记 TIMEOUT，`.sta` 完成标记 + ODB 完整），恢复提取：
+  final_strain 0.20000 / max_stress 0.2562 MPa / 78 点 / **KE/IE 0.53%（满足 <1% 准静态）**，
+  存于 `implicit/ref30_05_recovered_from_timeout/results/`。
+- **explicit T=0.006 4 例全部 DONE**：final_strain ≈0.200、101 点曲线，solve 7.2–19.4 min；
+  **KE/IE ≈ 0.93–1.02，不满足准静态**（真实动力响应，不能当准静态曲线解释）。
+- **explicit T=0.01**：用户暂停中。ref30_02 解到 ~83% step time 停止（实测比 T=0.006 慢约
+  1.4×，推算全程 ~17 min，可在 30 min 内完成）；ref30_03–05 未启动。续跑即重跑 driver，
+  RUNNING 会被当作"上次进程已死"从 solve 续起。
+- 流程实证：implicit 墙钟超时杀 launcher 后 **orphan standard.exe 存活**（占 8 线程 +
+  license，已按 PID 手工清理）——RB-014 的 kill-tree 缺口在真实实验中复现。
+- 时间线、逐例数字与偏差处置（solve 上限 1500s→1800s）详见 WORK_LOG 条目 002。

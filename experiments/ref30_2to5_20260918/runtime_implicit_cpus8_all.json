@@ -1,0 +1,24 @@
+{
+  "abaqus": {
+    "launcher": "E:/ABAQUS/2026/Commands/abaqus.bat",
+    "release_required": "2026"
+  },
+  "cgal": {
+    "executable": "F:/auto_abaqus/work/cgal_build_pixi_20260914_01/build/periodic_surface_mesher.exe"
+  },
+  "results": {
+    "keep_odb": true
+  },
+  "datacheck": {
+    "cpus": 8,
+    "standard_parallel": "all",
+    "mp_mode": null,
+    "timeout_s": 600
+  },
+  "solve": {
+    "cpus": 8,
+    "standard_parallel": "all",
+    "mp_mode": null,
+    "timeout_s": 1800
+  }
+}

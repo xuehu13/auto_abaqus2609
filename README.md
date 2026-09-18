@@ -400,7 +400,20 @@ batch 的 JSONL 读取、defaults 合并、重复 case_id、失败隔离、DONE/
 `tests/test_regression.py` 用 tracked config 重建 Fig.1 deck，与
 `tests/fixtures/fig1_20pct_regression/deck_sha256.json` 的 10 个 SHA 逐字节比较。
 
-## 真实验证状态（2026-09-17）
+## 真实验证状态
+
+### 2026-09-18 补充：ref30_02–05 implicit / explicit 实验（8CPU）
+
+- implicit（8CPU + `standard_parallel=all`）：datacheck 4/4 通过，**all 模式未复现历史
+  threads-per-domain 错误**；solve 与历史同位失败（0.312 / 0.532 停滞、一例快速失败），
+  ref30_05 实际 ~28 min 跑完（final_strain 0.2000，KE/IE 0.53% 满足准静态）。
+- explicit（8CPU，T=0.006s）4/4 DONE：final_strain ≈0.200、101 点曲线，solve 7.2–19.4 min；
+  **KE/IE ≈ 0.93–1.02，不满足准静态**——是真实动力响应，不能当准静态曲线解释。
+- explicit T=0.01s 组用户暂停中（ref30_02 解到 83% 停止，其余未启动）。
+- 配置/驱动/逐例证据：`experiments/ref30_2to5_20260918/`、`work/exp_ref30_2to5_20260918/`；
+  详细时间线与分析见 `docs/WORK_LOG.md`。
+
+### 2026-09-17 基准验证
 
 已在真实 Abaqus 2026 上验证：
 

@@ -162,15 +162,15 @@ REVIEW_BACKLOG 默认不读。
 | RB-009 | 12 | repo | DEFERRED | LOW/MEDIUM | .gitattributes `* -text` 作用于全仓库 |
 | RB-010 | 13 | data/reproducibility | RESOLVED | MEDIUM | 30 validation equations 已作为 tracked `references/validation_30_surfaces.md` 发布 |
 | RB-011 | 14 | pipeline | RESOLVED | HIGH (M4/M5) | curve_qa TARGETS 硬编码到 0.30（2026-09-18：`strain_targets` 进 QA policy） |
-| RB-012 | 15 | performance | DEFERRED | HIGH | standard_parallel=all / threads_per_mpi_process 性能债 |
+| RB-012 | 15 | performance | DEFERRED | HIGH | standard_parallel=all / threads_per_mpi_process 性能债（2026-09-18：all 模式错误未复现，性能矩阵待做） |
 | RB-013 | 17+18+19 | mechanics QA | DEFERRED | HIGH | contact warnings QA / PBC large-deformation / quasi-static validity |
-| RB-014 | 20 | reliability | DEFERRED | HIGH | solve timeout / child process tree / resume & reconciliation |
+| RB-014 | 20 | reliability | DEFERRED | HIGH | solve timeout / child process tree / resume & reconciliation（2026-09-18：orphan 标准求解器实证） |
 | RB-015 | 8+9 | M4 contract | ACCEPTED | HIGH | M4 extraction contract：step time ≠ strain；partial ODB 末点可能是 termination artifact |
 | RB-016 | 16 | performance evidence | NO_ACTION | LOW | cpus=8 + solver 在本机反而更慢（结论已记录） |
 | RB-017 | 21 | repo policy | NO_ACTION (CURRENT) | HIGH | attempt 不覆盖原则保持不变 |
 | RB-018 | 22 | scope | CURRENT | MEDIUM | temporary local batch runner ≠ production batch framework |
 | RB-019 | 23 | mesh | DEFERRED | MEDIUM | ref30_01/ref30_22 mesh 失败原因未解释（INVESTIGATION PENDING；2026-09-18：新流水线可稳定复现同曲面失败，见 RB-019 追加） |
-| RB-020 | 24 | solve | DEFERRED | MEDIUM/HIGH | difficult solve cases 02/03/04 尚未归因（INVESTIGATION PENDING） |
+| RB-020 | 24 | solve | DEFERRED | MEDIUM/HIGH | difficult solve cases 02/03/04 尚未归因（2026-09-18：新管道同位复现；ref30_05 实际可解） |
 | RB-021 | 25 | config identity | RESOLVED | LOW/MEDIUM | model/scaffold/build identity 分层与 runtime 信息混入的长期债（2026-09-17 重构：三层 key 已删除，身份 = 配置内容 digest） |
 | RB-022 | 26 | material | CURRENT LIMITATION | HIGH | demo_surrogate 不是 production material，曲线不可作真实材料解释 |
 | RB-023 | D1 | M4 extraction / ODB history | ACCEPTED（仍活跃） | HIGH | ODB 内重复整体能量 history key 必须由 extraction 显式消歧（当前默认配置仍产生重复；worker 仅用已文档化的 plain-key 启发式） |
@@ -313,6 +313,10 @@ REVIEW_BACKLOG 默认不读。
 - 当前决定：DEFERRED，本轮不实际运行任何实验。
 - 下一步：按登记的矩阵先 Data Check 后 solve；详细证据见 `docs/TROUBLESHOOTING.md`（本文不重复完整历史）。
 - 相关文件：`docs/TROUBLESHOOTING.md`、`docs/IMPLEMENTATION_PLAN.md`、`docs/HANDOFF_CURRENT.md`。
+- 追加（2026-09-18，ref30 实验 observed fact）：新单目录流水线在 cpus=8 + `standard_parallel=all`
+  下跑 implicit ref30_02–05，**4 例 datacheck 与 solve 阶段均未复现 threads-per-domain ERROR**
+  （`docs/WORK_LOG.md` 条目 002）。当时的 ERROR 疑与旧 runner 环境相关；`=solver` 不再是必需
+  workaround，但性能债（8CPU 曾实测更慢，RB-016）仍待按矩阵实验。状态维持 DEFERRED。
 
 ### RB-013 — mechanics QA 缺口：contact warnings / PBC large-deformation / quasi-static validity
 
@@ -341,6 +345,11 @@ REVIEW_BACKLOG 默认不读。
 - 追加（2026-09-16 DeepSeek review，仅登记）：**future batch controller 必须解析 structured JSON/report status**（`solve_report.json` / `datacheck_report.json`），**不得仅依赖 process return code**。当前 CLI 语义（0 = clean、3 = non-clean/needs review、2 = invocation/config failure）是合理的人类 CLI policy，**本轮不修改 `run.py`**。
 - 追加 Next Action（M7 实现时）：为 `DATACHECK_TIMEOUT` 与 `SOLVE_TIMEOUT` 补充 regression tests（本轮不新增测试；当前测试套件未覆盖超时路径）。
 - 相关文件：`docs/TROUBLESHOOTING.md`、`docs/IMPLEMENTATION_PLAN.md`（阶段 E/F）。
+- 追加（2026-09-18，ref30 实验 observed fact）：**kill-tree 缺口在真实实验中复现**——implicit
+  solve 1500s 墙钟超时只杀 launcher，orphan `standard.exe` 继续存活（ref30_02/ref30_04 两例，
+  各占 8 线程 + license，需手工按 PID 清理；绝不能按镜像名杀）；ref30_05 的 orphan 则跑完了
+  分析（其 ODB 因此得以恢复提取）。同时证明 orphan 完成时 `.sta`/ODB 仍可写——超时后的
+  reconciliation（"RUNNING/TIMEOUT 但分析实际完成"）是 M7 设计的真实输入场景。状态维持 DEFERRED。
 
 ### RB-015 — M4 extraction contract：step time ≠ strain；partial ODB 末点可能是 termination artifact
 
@@ -410,6 +419,12 @@ REVIEW_BACKLOG 默认不读。
 - 当前决定：DEFERRED。归因必须等 M4 field / energy / contact evidence；在此之前不修改任何物理参数、不宣称模型错误。
 - 下一步：M4 extraction + mechanics QA 后系统研究。
 - 相关文件：`docs/TROUBLESHOOTING.md`、`docs/EXPERIMENT_30_SURFACES_20260915.md`。
+- 追加（2026-09-18，ref30 实验 observed fact）：干净单目录流水线（8CPU + all）**复现同一失败图景**——
+  ref30_02 停滞 step time 0.312、ref30_04 停滞 0.532、ref30_03 364.5s 自行 SOLVE_FAILED，与 night batch
+  记录的停滞位置一致，进一步排除旧 runner 因素；**ref30_05 在 1500s 上限截断后 orphan 实际跑完**
+  （`.sta` 完成标记，恢复提取 final_strain 0.2000 / KE/IE 0.53%），说明该曲面在 ~28 min 内可解，
+  历史只拿到 partial curve 是墙钟而非数值原因。证据：`work/exp_ref30_2to5_20260918/`（本地）、
+  `docs/WORK_LOG.md` 条目 002。状态维持 DEFERRED / INVESTIGATION PENDING。
 
 ### RB-021 — config identity 分层的长期技术债
 

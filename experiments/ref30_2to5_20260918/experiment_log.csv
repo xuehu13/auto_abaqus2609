@@ -1,0 +1,10 @@
+group,case_id,started_utc,wall_s,exit,pipeline_status,stage,message_head
+implicit,ref30_02,2026-09-18T04:01:20Z,1623.4,2,SOLVE_TIMEOUT,solve,Abaqus analysis exceeded the 1500s wall limit; the run directory is kept for inspection: work\exp_ref30_2to5_20260918\implicit\ref30_02\abaqus
+implicit,ref30_03,2026-09-18T04:28:24Z,487.4,2,EXTRACT_INVALID_SOURCE,extract,Solve status is 'SOLVE_FAILED'; extraction needs a completed solve.
+implicit,ref30_04,2026-09-18T04:36:31Z,1617.7,2,SOLVE_TIMEOUT,solve,Abaqus analysis exceeded the 1500s wall limit; the run directory is kept for inspection: work\exp_ref30_2to5_20260918\implicit\ref30_04\abaqus
+implicit,ref30_05,2026-09-18T05:03:29Z,1635.3,2,SOLVE_TIMEOUT,solve,Abaqus analysis exceeded the 1500s wall limit; the run directory is kept for inspection: work\exp_ref30_2to5_20260918\implicit\ref30_05\abaqus
+explicit_T0.006s,ref30_02,2026-09-18T05:30:44Z,1299.2,0,DONE,done,
+explicit_T0.006s,ref30_03,2026-09-18T05:52:23Z,589.5,0,DONE,done,
+explicit_T0.006s,ref30_04,2026-09-18T06:02:13Z,542.1,0,DONE,done,
+explicit_T0.006s,ref30_05,2026-09-18T06:11:15Z,706.0,0,DONE,done,
+explicit_T0.01s,ref30_02,2026-09-18T06:23:01Z,~960,USER_PAUSED,RUNNING(solve),solve,Solve interrupted at ~83% step time by user pause request; dir kept as evidence
