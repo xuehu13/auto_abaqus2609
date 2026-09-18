@@ -369,5 +369,54 @@ class StaticCheckTests(BuildSandbox):
         self.assertFalse((out / "build_report.json").exists())
 
 
+class ThicknessModeTests(BuildSandbox):
+    """shell.thickness_mode: 'relative_density' keeps the frozen formula; 'fixed'
+    takes shell.thickness_mm as the physical thickness (never silently mixed)."""
+
+    def shell_lines(self, attempt):
+        lines = self.block(attempt, "blocks/material_section.inc").splitlines()
+        index = next(i for i, line in enumerate(lines)
+                     if line.startswith("*Shell Section"))
+        return lines[index], lines[index + 1]
+
+    def test_relative_density_mode_matches_the_untagged_default(self):
+        default_out, default_doc = self.build_attempt()
+        explicit_out, explicit_doc = self.build_attempt(
+            lambda doc: doc["shell"].update(thickness_mode="relative_density",
+                                            thickness_mm=None))
+        self.assertEqual(self.shell_lines(default_out), self.shell_lines(explicit_out))
+        self.assertEqual(default_doc["model"]["thickness_mm"],
+                         explicit_doc["model"]["thickness_mm"])
+        self.assertEqual(explicit_doc["model"]["thickness_source"], "relative_density")
+
+    def test_fixed_mode_uses_the_given_thickness_and_records_its_source(self):
+        out, document = self.build_attempt(
+            lambda doc: doc["shell"].update(thickness_mode="fixed", thickness_mm=0.42))
+        keyword, data = self.shell_lines(out)
+        self.assertIn("*Shell Section", keyword)
+        self.assertIn("0.42", data, "the fixed thickness must reach the Shell Section")
+        self.assertEqual(document["model"]["thickness_mm"], 0.42)
+        self.assertEqual(document["model"]["thickness_source"], "fixed")
+
+    def test_invalid_mode_is_rejected(self):
+        with self.assertRaises(PipelineError) as caught:
+            self.build_attempt(lambda doc: doc["shell"].update(thickness_mode="bogus"))
+        self.assertEqual(caught.exception.code, "CONFIG_INVALID")
+
+    def test_fixed_mode_requires_a_positive_thickness(self):
+        for bad in (None, -1.0, 0.0):
+            with self.subTest(thickness_mm=bad):
+                with self.assertRaises(PipelineError) as caught:
+                    self.build_attempt(lambda doc: doc["shell"].update(
+                        thickness_mode="fixed", thickness_mm=bad))
+                self.assertEqual(caught.exception.code, "CONFIG_INVALID")
+
+    def test_thickness_mm_without_fixed_mode_is_rejected_not_ignored(self):
+        with self.assertRaises(PipelineError) as caught:
+            self.build_attempt(lambda doc: doc["shell"].update(thickness_mm=2.0))
+        self.assertEqual(caught.exception.code, "CONFIG_INVALID")
+        self.assertIn("silently ignored", str(caught.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

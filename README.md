@@ -11,6 +11,11 @@
 pixi run cli run-case --case config/cases/fig1.json --simulation config/simulation.json
 ```
 
+> **普通运行请看 [docs/RUN_GUIDE.md](docs/RUN_GUIDE.md)**：从总配置
+> `config/experiments/production.json` 一条命令跑整批
+> （`pixi run cli run-experiment --config config/experiments/production.json`）。
+> 下面的单 case / 单 stage 命令属于调试与高级接口。
+
 ## 快速开始
 
 ```powershell

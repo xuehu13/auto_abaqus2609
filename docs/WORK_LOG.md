@@ -272,3 +272,87 @@ CLI 以非零码明确报错。fatal 一律不重试。
 solve 30s 超时：standard.exe 被终止、`killtree_selftest` 相关进程清零、
 `.dat`(20KB)/`.msg`(7.7KB)/部分 `.odb`(6.3MB) 证据保留、状态记 `SOLVE_TIMEOUT`。
 全套测试 **173 OK**（171 + 本次复查新增 2）。
+
+---
+
+## 004 — 2026-09-18 20:39 — 运行入口整理：production.json 总配置 + run-experiment + thickness_mode
+
+### 背景与目标
+
+用户要求"小范围、科研自用"的运行入口整理：新使用者只编辑一个带注释的总配置
+`config/experiments/production.json`、准备 `cases.jsonl`、执行一条
+`pixi run cli run-experiment --config ...`，即可走完现有已验证流水线
+（surface → mesh → mesh datacheck → build → physical datacheck → solve → extract →
+batch summary）。**不重实现 pipeline、不做通用框架**；另加一个小能力
+`shell.thickness_mode`（relative_density / fixed）。
+
+### 施工前核对
+
+只读核对了 mesh.py（load_case/merge_case/prepare_ingredients）、batch.py
+（load_cases/_write_batch_files/batch_config.json）、build.py、run.py、各 config，
+从**当前代码**提取真实参数面（require_keys 的 required/optional 集合、runtime 的
+_RESULTS_KEYS 等），不按旧文档猜。
+
+### 改动清单
+
+- **`config/experiments/production.json`（新增）**：12 个大类（01 EXPERIMENT …
+  12 RUNTIME）全覆盖当前代码实际支持的用户可调参数；每个参数上一行有简洁中文注释
+  （单位/作用/适用 solver）；大类之间横幅分割。注释约定 = **仅整行 `//`**，
+  读取时剥离后走标准 `json.loads`（字符串内的 `//` 不受影响）。
+- **`pipeline/experiment.py`（新增，薄适配层）**：`load_production`（剥注释+解析+
+  顶层 12 类目 require_keys 校验）、`build_inputs`（拆成 case defaults =
+  geometry+mesh；simulation = material/shell/pbc/platen/contact/loading/solver/output；
+  runtime；cases_file/work_root 相对仓库根解析并检查存在性；experiment_id 过
+  safe_id 校验）、`start_experiment`（把三份解析后配置 + `production_used.json`
+  写入 batch 目录作为 provenance 快照，然后调用**现有** `run_batch`）。
+- **`run.py`**：新增 `run-experiment --config` 子命令；docstring 与 `plan` 增加入口说明。
+- **thickness_mode（mesh.py/build.py 各极小改动）**：`shell.thickness_mode`
+  （默认 `relative_density`，行为与历史完全一致）+ 可选 `shell.thickness_mm`；
+  `fixed` 模式直接以 `thickness_mm` 为正式物理壳厚度；两者互斥（relative_density 下
+  thickness_mm 非 null → 明确报错，不静默混用）；`build_report.model.thickness_source`
+  记录厚度来源。`config/simulation.json` 的 shell 块显式补上这两个键（行为不变）。
+- **`docs/RUN_GUIDE.md`（新增）**：普通使用者运行手册；**`README.md`** 顶部加入口
+  「普通运行请看 docs/RUN_GUIDE.md」。
+
+### 映射方式（production.json → 现有 pipeline）
+
+```
+production.json
+  ├─ experiment            → run_batch(work_root=<work_root>/<experiment_id>,
+  │                                   workers/retry_failed/max_retries/force)
+  ├─ cases_file            → run_batch(cases_path=...)（沿用现有 JSONL + per-case overrides）
+  ├─ geometry + mesh       → 快照 batch_dir/case_defaults.json → run_batch(defaults_path=...)
+  ├─ material/shell/pbc/   → 快照 batch_dir/simulation.json → run_batch(simulation_path=...)
+  │  platen/contact/loading/solver/output
+  └─ runtime               → 快照 batch_dir/runtime.json → run_batch(runtime_path=...)
+```
+
+batch 目录内同时保存 `production_used.json`（剥离注释后的完整有效配置）。已存在且
+内容一致 → 允许 resume；不一致 → `EXPERIMENT_ID_REUSE` 报错（提示换新 experiment_id），
+绝不覆盖证据。batch_config.json 天然指向 batch 目录内的快照，自洽可溯源。
+
+### 测试
+
+- 新增 `tests/test_experiment.py`（12 测）：整行注释剥离（含字符串内 `//` 保留、
+  行尾注释不支持）、shipped production.json → 三份文档全部通过**真实的**
+  `load_cases`/`load_simulation`/`load_runtime` 校验、solver 切换、路径解析、
+  快照写入与 resume/改配置复用报错、run_batch 调用边界（mock，不启动 Abaqus）。
+- `tests/test_build.py` 新增 ThicknessModeTests（5 测）：relative_density 与不带
+  标记的默认行为逐字节一致；fixed 厚度进入 *Shell Section 且
+  `thickness_source=fixed`；非法模式/非法 fixed 厚度/两来源混用全部明确报错。
+- 全套 **190 OK**（原 173 + 新 17）；`pixi run cli run-experiment --help` 与
+  `plan` 正常；真实边界检查确认 production.json 派生的快照被真实 loader 接受。
+- **未跑真实 Abaqus 批量**（按本轮要求不启动长时间求解；thickness_mode 的 deck 级
+  一致性由回归 fixture 覆盖：relative_density 默认路径的 deck 字节与冻结基线一致）。
+
+### 兼容性
+
+`run-case` / `run-batch` / `summarize-batch` / `mesh` / `mesh-datacheck` / `build` /
+`datacheck` / `solve` / `extract` / `qa-history` 全部未动接口，现有
+simulation.json / case_defaults.json / runtime*.json 保留；旧入口 = 高级调试入口，
+run-experiment 只是上面一层薄用户入口。pipeline 大模块仅 mesh.py（厚度 4 行）与
+build.py（shell 校验 + 报告字段）按任务许可做了必要小改。
+
+### 关联提交
+
+- 本轮改动已随本次提交入库（本条目 + experiment.py + production.json + RUN_GUIDE + 测试）。

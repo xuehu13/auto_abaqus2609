@@ -1,0 +1,335 @@
+// ============================================================================
+// production.json —— 科研批量计算总配置（普通使用者主要编辑这个文件）
+// ============================================================================
+//
+// 运行方式：
+//   pixi run cli run-experiment --config config/experiments/production.json
+//
+// 说明：
+//   * 路径（cases_file / work_root）相对仓库根目录填写。
+//   * 本文件只支持“整行 // 注释”（注释必须单独成行，写在参数上一行），
+//     不能在参数同一行后面写注释；字符串内容里的 // 不受影响。
+//   * 曲面清单在 cases_file 指向的 JSONL 里，每行一个曲面，例如：
+//         {"case_id": "case_00001", "surface_expression": "2.3*cos(X)*sin(Z)-0.6"}
+//     公共参数全部来自本文件，不要把公共配置复制进每一行。
+// ============================================================================
+
+{
+
+// ============================================================================
+// 01. EXPERIMENT —— 批次与运行控制
+// ============================================================================
+"experiment": {
+  // 实验名 = 结果目录名：结果在 work/<experiment_id>/ 下。改动本文件里的任何
+  // 科学参数后，建议换一个新 experiment_id，旧结果与旧配置快照得以完整保留。
+  "experiment_id": "production_v1",
+
+  // 曲面清单（JSONL）。相对仓库根目录。
+  "cases_file": "config/cases.jsonl",
+
+  // 结果根目录。相对仓库根目录。
+  "work_root": "work",
+
+  // 同时计算的 case 个数。每个 case 内部再按 runtime.solve.cpus 用核。
+  // 许可证/内存紧张时保持 1。
+  "workers": 1,
+
+  // true = 重跑上次失败的 case（同样的配置，只补跑失败的 stage）。
+  "retry_failed": false,
+
+  // 每个 case 的额外重试次数（0 = 不自动重试；重试绝不修改科学参数）。
+  "max_retries": 0,
+
+  // true = 所有 stage 全部重算（包括已完成的），并为旧结果目录改名保留。
+  "force": false
+},
+
+// ============================================================================
+// 02. GEOMETRY —— 单胞几何
+// ============================================================================
+"geometry": {
+  // 单胞名义尺寸 L，单位 mm。RP 位置、目标位移（= -应变 × L）都由它决定。
+  "unit_cell_size_mm": 10.0,
+
+  // 曲面方程的等值面水平：曲面即「方程 = iso_level」。一般保持 0.0。
+  "iso_level": 0.0
+},
+
+// ============================================================================
+// 03. MESH —— 网格（冻结 vendor 网格器 + CGAL 的全部可调参数）
+// ============================================================================
+"mesh": {
+  // 曲面拓扑采样密度（每边采样段数），越大对曲面刻画越细，越慢。
+  "topology_sampling_intervals": 100,
+
+  // 边界（周期匹配）目标网格间距，单位 mm。
+  "boundary_target_spacing_mm": 0.18,
+
+  // ---- CGAL 体网格器参数 ----
+  "cgal": {
+    // 边缘保护网格尺寸，mm。
+    "edge_size_mm": 0.18,
+    // 面片质量角（度），越大网格质量越好、越慢（常用 25）。
+    "facet_angle_deg": 25.0,
+    // 面片目标尺寸，mm。
+    "facet_size_mm": 0.15,
+    // 面片与真实曲面的最大距离偏差，mm（越小越贴曲面）。
+    "facet_distance_mm": 0.03,
+    // 单元半径/外接球半径比上限（越小单元越规整，常用 2.0）。
+    "cell_radius_edge_ratio": 2.0,
+    // 体单元目标尺寸，mm。
+    "cell_size_mm": 0.5,
+    // 随机种子（同种子 = 同网格，保证可复现）。
+    "random_seed": 20260911
+  },
+
+  // ---- 几何/拓扑容差（一般不需要动；单位 mm，area 为 mm²）----
+  "tolerances": {
+    "snap_mm": 1e-08,
+    "topology_pair_mm": 1e-07,
+    "boundary_mm": 1e-08,
+    "feature_plane_mm": 1e-09,
+    "feature_periodic_mm": 1e-08,
+    "dedup_mm": 1e-09,
+    "final_pair_mm": 1e-08,
+    "area_mm2": 1e-14
+  },
+
+  // ---- Mesh Data Check（网格质量检查用的临时线弹性模型）----
+  // 注意：这里的 thickness_mm 只是 Mesh Data Check 的临时检查厚度，
+  // 不是正式物理壳厚度！正式壳厚度见下面 05. SHELL 的 thickness_mode。
+  "meshcheck": {
+    // 检查用杨氏模量，MPa（任意正值即可，只影响检查变形量）。
+    "material_E": 1.0,
+    // 检查用泊松比。
+    "material_nu": 0.3,
+    // 检查用厚度，mm（临时值，与正式壳厚度无关）。
+    "thickness_mm": 1.0
+  }
+},
+
+// ============================================================================
+// 04. MATERIAL —— 正式有限元材料
+// ============================================================================
+"material": {
+  // 密度，单位 tonne/mm³（= 1e9 kg/m³ 换算后；显式动力学与 KE/IE 由它决定）。
+  "density_tonne_mm3": 1.1e-09,
+
+  // 杨氏模量，单位 MPa。
+  "youngs_modulus_MPa": 484.0,
+
+  // 泊松比，必须在 (-1, 0.5) 开区间内。
+  "poisson_ratio": 0.4,
+
+  // 塑性表，每行 = [真实屈服/流动应力 MPa, 等效塑性应变]。
+  // 第一行塑性应变必须为 0；应力必须为正且随应变递增。
+  "plastic_table": [
+    [8.0, 0.0],
+    [9.5, 0.02],
+    [11.0, 0.05],
+    [12.5, 0.08],
+    [13.5, 0.11],
+    [14.2, 0.147],
+    [14.5, 0.2],
+    [15.0, 0.3],
+    [15.6, 0.5],
+    [16.3, 0.8],
+    [17.0, 1.2],
+    [18.0, 2.0]
+  ]
+},
+
+// ============================================================================
+// 05. SHELL —— 壳单元与壳厚度
+// ============================================================================
+"shell": {
+  // 壳单元类型：网格是 3 节点三角形，可选 S3 / S3R / STRI3。
+  "element_type": "S3R",
+
+  // 厚度方向积分点数（Simpson 积分，1～99，常用 5）。
+  "integration_points": 5,
+
+  // 厚度来源（两种模式，二选一，绝不混用）：
+  //   "relative_density" = 用相对密度算厚度：t = target_relative_density × L³ / 曲面面积
+  //   "fixed"            = 直接使用下面的 thickness_mm 作为正式物理壳厚度
+  "thickness_mode": "relative_density",
+
+  // 相对密度（0,1) 开区间。仅在 thickness_mode="relative_density" 时参与厚度计算。
+  "target_relative_density": 0.1,
+
+  // 正式物理壳厚度，mm，单位 mm。仅在 thickness_mode="fixed" 时读取且必须为正数；
+  // relative_density 模式下必须保持 null（否则启动即报错，避免两套厚度来源混用）。
+  // 实际使用的厚度与其来源会记录在每个 case 的 build_report.json（model.thickness_mm
+  // 与 model.thickness_source）。
+  "thickness_mm": null
+},
+
+// ============================================================================
+// 06. PBC —— 周期边界条件
+// ============================================================================
+"pbc": {
+  // 周期方程是否包含转动自由度（DOF 4-6）。true = 更严格的周期约束。
+  "include_rotational_dofs": true
+},
+
+// ============================================================================
+// 07. PLATEN —— 刚性压板
+// ============================================================================
+"platen": {
+  // 刚性压板单元类型：压板是 4 节点四边形网格，当前仅支持 R3D4。
+  "element_type": "R3D4",
+
+  // 压板宽度系数（压板边长 = width_factor × L，需 > 1 才能完全覆盖单胞）。
+  "width_factor": 1.8,
+
+  // 压板网格尺寸，mm（必须是压板边长的整除因子）。
+  "mesh_size_mm": 1.0
+},
+
+// ============================================================================
+// 08. CONTACT —— 接触
+// ============================================================================
+"contact": {
+  // 法向接触行为（Abaqus pressure-overclosure 关键字），常用 "hard"。
+  "normal": "hard",
+
+  // 是否允许接触分离（false = 追加 no separation）。
+  "allow_separation": true,
+
+  // 摩擦系数（库仑摩擦，≥ 0）。
+  "friction": 0.6,
+
+  // true = 全外表面自接触（ALL EXTERIOR）；false = 只保留 壳-压板 面对接触。
+  // 两种取值都做过真实 Data Check（Explicit smoke 在 true 下也完整跑通过）；
+  // 换值后建议先用单个 case 的 Data Check 验证。
+  "self_contact": true
+},
+
+// ============================================================================
+// 09. LOADING —— 压缩加载
+// ============================================================================
+"loading": {
+  // 目标压缩工程应变（0,1)：0.2 = 压缩 20%。目标位移 = -应变 × L。
+  "target_compression_strain": 0.2,
+
+  // 加载幅值曲线："smooth_step"（光滑阶跃）或 "ramp"（线性斜坡）。
+  "amplitude": "smooth_step"
+},
+
+// ============================================================================
+// 10. SOLVER —— 求解器（type 选择用哪套；两套参数都保留，切换不用删块）
+// ============================================================================
+"solver": {
+  // 求解器类型："standard_dynamic_implicit"（隐式）或 "explicit_dynamic"（显式）。
+  "type": "standard_dynamic_implicit",
+
+  // ---- Standard 隐式参数（仅 solver.type = standard_dynamic_implicit 时使用）----
+  "standard_dynamic_implicit": {
+    // 分析步时长，单位 s（光滑阶跃幅值在此时间内从 0 到目标位移）。
+    "time_period_s": 1.0,
+    // 大变形理论开关（NLGEOM）。保持 true。
+    "nlgeom": true,
+    // 隐式动力学应用模式（Abaqus 关键字，空格代替下划线，如 moderate dissipation）。
+    "application": "moderate_dissipation",
+    // 是否施加初始加速度（*Dynamic 的 initial=）。
+    "initial_acceleration": false,
+    // 初始增量步，s。
+    "initial_increment_s": 0.001,
+    // 最小增量步，s（收敛停滞的下限）。
+    "minimum_increment_s": 1e-08,
+    // 最大增量步，s。
+    "maximum_increment_s": 0.02,
+    // 增量步数上限。
+    "maximum_increments": 10000,
+    // 接触滑移容差（slip tolerance；Standard 专属，Explicit 不接受该参数）。
+    "slip_tolerance": 0.005,
+    // 重启动文件写入频率（按增量步数；0 = 不写）。
+    "restart_frequency": 0,
+    // 场输出频率（每 N 个增量步写一次 field）。
+    "field_frequency": 50,
+    // history 输出频率（每 N 个增量步写一次；下面的 Energy/Node 输出继承此频率）。
+    "history_frequency": 1,
+    // 额外 PRESELECT history 组的频率（>0 时会与上面的能量输出产生重复 key，属已知现象）。
+    "preselect_history_frequency": 10
+  },
+
+  // ---- Explicit 显式参数（仅 solver.type = explicit_dynamic 时使用）----
+  "explicit_dynamic": {
+    // 分析步时长 T，单位 s。显式的动能占比（KE/IE）随 T 变小而升高，T 太短不是准静态。
+    "time_period_s": 1.0,
+    // 场输出的时间分段数（整段 T 均分写 N 次 field）。
+    "field_number_interval": 100,
+    // history 输出时间间隔，s（曲线点数 ≈ T / 该值 + 1）。
+    "history_time_interval_s": 0.001,
+    // 是否在整点时间标记处额外输出 field。
+    "field_time_marks": false,
+    // 质量缩放。enabled=true 时 factor 才被读取；缩放会改变密度场，
+    // 结果与未缩放模型不可直接比较，报告中会明确记录。
+    "mass_scaling": {
+      "enabled": false,
+      "factor": 1.0
+    }
+  }
+},
+
+// ============================================================================
+// 11. OUTPUT —— history 输出请求（供提取与 curve QA 使用）
+// ============================================================================
+"output": {
+  // requests 每项：kind = "energy"（整个模型）或 "node"（须给 region）+ variables。
+  // 可用 region：RP_TOP / RP_BOTTOM / RP_X_CTRL / RP_Y_CTRL /
+  //              PLATE_BOTTOM_NODES / PLATE_TOP_NODES。
+  // 采样频率不在这里设置：隐式继承 history_frequency，显式继承 history_time_interval_s。
+  "requests": [
+    { "kind": "energy", "variables": ["ALLAE", "ALLIE", "ALLKE", "ALLPD", "ALLWK", "ETOTAL"] },
+    { "kind": "node", "region": "RP_TOP", "variables": ["RF3", "U3"] },
+    { "kind": "node", "region": "RP_X_CTRL", "variables": ["U1"] },
+    { "kind": "node", "region": "RP_Y_CTRL", "variables": ["U2"] }
+  ]
+},
+
+// ============================================================================
+// 12. RUNTIME —— 机器本地运行参数（与科学无关；launcher 属于本机路径）
+// ============================================================================
+"runtime": {
+  "abaqus": {
+    // Abaqus launcher 的绝对路径（例：E:/ABAQUS/2026/Commands/abaqus.bat）。
+    // null = 未配置，会在运行时明确报错（本仓库不自动猜测安装位置）。
+    "launcher": null,
+    // 要求的 Abaqus 版本号（与 launcher 实际报告版本不一致即拒绝运行）。
+    "release_required": "2026"
+  },
+  "cgal": {
+    // CGAL 网格器可执行文件路径；null = 自动找 work/*/build 下最新的
+    // periodic_surface_mesher.exe。
+    "executable": null
+  },
+  "results": {
+    // 是否保留求解 ODB（false = extract 成功后删除 ODB 以省空间，日志与报告保留）。
+    "keep_odb": true,
+    // 曲线 QA policy 文件路径（null = 不做曲线 QA 记录；示例 config/quality.example.json）。
+    "curve_qa_policy": null
+  },
+  "datacheck": {
+    // Data Check 使用的 CPU 核数。
+    "cpus": 2,
+    // 仅 Standard 生效："all" = 整个求解并行，"solver" = 只并行求解器部分。
+    "standard_parallel": "solver",
+    // 并行消息传递模式（null = 不传；某些机器 Explicit 用 "threads" 可绕开 smpd 问题）。
+    "mp_mode": null,
+    // Data Check 墙钟上限，秒；超时会终止该 case 的整个 Abaqus 进程树并保留证据。
+    "timeout_s": 600
+  },
+  "solve": {
+    // Solve 使用的 CPU 核数。
+    "cpus": 4,
+    // 仅 Standard 生效，同 datacheck.standard_parallel。
+    "standard_parallel": "solver",
+    // 同 datacheck.mp_mode。
+    "mp_mode": null,
+    // Solve 墙钟上限，秒；超时同样终止整个进程树并保留全部证据文件。
+    "timeout_s": 14400
+  }
+}
+// ================================== 文件结束 ==================================
+}

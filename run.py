@@ -6,6 +6,7 @@ interpreter is not a supported entry point for this project.
 
     run-case   the whole single-case pipeline (mesh -> ... -> extract)
     run-batch  many cases through the same run_case(), one directory per case
+    run-experiment    one commented total config -> run-batch (user entry; RUN_GUIDE.md)
     summarize-batch   rebuild the batch tables from the case directories
     mesh | mesh-datacheck | build | datacheck | solve | extract   one stage, for debugging
     plan       what each stage consumes and produces
@@ -24,6 +25,13 @@ DEFAULT_CASE = "config/cases/fig1.json"
 DEFAULT_SIMULATION = "config/simulation.json"
 
 PLAN = {
+    "experiment": {"command": "pixi run cli run-experiment --config "
+                              "config/experiments/production.json",
+                   "note": "user entry: one commented total config (cases, geometry/mesh, "
+                           "material/shell/loading/solver, runtime) -> run-batch; snapshots "
+                           "of the effective config land in the batch directory",
+                   "layout": "work/<experiment_id>/{<case_id>/, batch_summary.csv, "
+                             "results_index.jsonl, failed_cases.jsonl, production_used.json}"},
     "one_case": {"command": "pixi run cli run-case --case config/cases/fig1.json "
                             "--simulation config/simulation.json",
                  "note": "resumes from work/<case_id>/status.json; use --force to redo",
@@ -126,6 +134,12 @@ def _main():
     p.add_argument("--policy", required=True)
     p.add_argument("--out", required=True, help="NEW JSON output path")
 
+    p = sub.add_parser("run-experiment",
+                       help="Run one batch from a commented total config "
+                            "(config/experiments/production.json); see docs/RUN_GUIDE.md")
+    p.add_argument("--config", default="config/experiments/production.json",
+                   help="Total experiment config (whole-line // comments allowed)")
+
     p = sub.add_parser("run-batch", help="Run many cases through the same single-case pipeline")
     p.add_argument("--cases", default="config/cases.jsonl", help="JSONL: one case per line")
     p.add_argument("--case-defaults", default="config/case_defaults.json",
@@ -163,6 +177,9 @@ def _main():
                          retry_failed=args.retry_failed, max_retries=args.max_retries,
                          force=args.force, runtime_path=args.runtime, cpus=args.cpus,
                          timeout_s=args.timeout_s, abaqus_command=args.abaqus_command)
+    if args.command == "run-experiment":
+        from pipeline.experiment import start_experiment
+        return start_experiment(args.config)
     if args.command == "summarize-batch":
         from pipeline.batch import rebuild_summary
         return rebuild_summary(args.work_root)

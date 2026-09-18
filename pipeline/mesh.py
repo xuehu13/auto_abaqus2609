@@ -254,7 +254,12 @@ def prepare_ingredients(npz, report, pairs, simulation, output):
                             "plastic_table needs positive true stress and increasing equivalent "
                             "plastic strain starting at zero.")
     L, area = mesh["L_mm"], mesh["area_mm2"]
-    thickness = relative_density * L**3 / area
+    # Shell thickness source (validated in build.load_simulation):
+    # "relative_density" keeps the historical t = rho* * L^3 / surface area,
+    # "fixed" takes shell.thickness_mm as the physical shell thickness.
+    thickness_mode = shell.get("thickness_mode", "relative_density")
+    thickness = (float(shell["thickness_mm"]) if thickness_mode == "fixed"
+                 else relative_density * L**3 / area)
     target_displacement = -strain * L
     mapping = pbc_relations(mesh["x_pairs"], mesh["y_pairs"],
                             simulation["pbc"]["include_rotational_dofs"])
@@ -274,6 +279,7 @@ def prepare_ingredients(npz, report, pairs, simulation, output):
     write_json(output / "pbc_map.json", mapping)
     return {"case_id": mesh["report"].get("case_id"), "L_mm": L, "A0_mm2": L**2,
             "surface_area_mm2": area, "thickness_mm": thickness,
+            "thickness_mode": thickness_mode,
             "target_displacement_mm": target_displacement, "labels": labels,
             "shell_nodes": count, "shell_elements": len(mesh["triangles"]),
             "equation_count": mapping["equation_count"]}

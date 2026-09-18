@@ -65,6 +65,7 @@ _NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 _SIM_REQUIRED = ("material", "shell", "platen", "contact", "loading", "solver", "output", "pbc")
 _MATERIAL_KEYS = ("density_tonne_mm3", "youngs_modulus_MPa", "poisson_ratio", "plastic_table")
 _SHELL_KEYS = ("element_type", "integration_points", "target_relative_density")
+_SHELL_OPTIONAL_KEYS = ("thickness_mode", "thickness_mm")
 _PLATEN_KEYS = ("element_type", "width_factor", "mesh_size_mm")
 _CONTACT_KEYS = ("normal", "allow_separation", "friction", "self_contact")
 _LOADING_KEYS = ("target_compression_strain", "amplitude")
@@ -237,11 +238,25 @@ def load_simulation(path):
                                 % index)
         finite(row[0], "material.plastic_table[%d][0]" % index, positive=True)
         finite(row[1], "material.plastic_table[%d][1]" % index, minimum=0.0)
-    shell = require_keys(sim["shell"], path, _SHELL_KEYS, (), "simulation.shell")
+    shell = require_keys(sim["shell"], path, _SHELL_KEYS, _SHELL_OPTIONAL_KEYS,
+                         "simulation.shell")
     _element_type(shell["element_type"], "shell.element_type", TRIANGLE_SHELL_TYPES,
                   "the shell mesh is 3-node triangles, so only 3-node shell elements fit")
     positive_int(shell["integration_points"], "shell.integration_points", maximum=99)
     finite(shell["target_relative_density"], "shell.target_relative_density", positive=True)
+    thickness_mode = shell.get("thickness_mode", "relative_density")
+    if thickness_mode not in ("relative_density", "fixed"):
+        raise PipelineError("CONFIG_INVALID",
+                            "shell.thickness_mode must be 'relative_density' or 'fixed', "
+                            "got " + repr(thickness_mode))
+    if thickness_mode == "fixed":
+        finite(shell.get("thickness_mm"), "shell.thickness_mm (thickness_mode='fixed')",
+               positive=True)
+    elif shell.get("thickness_mm") is not None:
+        raise PipelineError("CONFIG_INVALID",
+                            "shell.thickness_mm is only read when shell.thickness_mode='fixed'; "
+                            "set thickness_mode='fixed' or remove thickness_mm (it would "
+                            "otherwise be silently ignored).")
     platen = require_keys(sim["platen"], path, _PLATEN_KEYS, (), "simulation.platen")
     _element_type(platen["element_type"], "platen.element_type", QUAD_RIGID_TYPES,
                   "the platen grid is a 4-node quad grid, so only 4-node rigid elements fit")
@@ -795,6 +810,7 @@ def build(npz, report, pairs, simulation_path, output):
         "model": {"L_mm": facts["L_mm"], "A0_mm2": facts["A0_mm2"],
                   "surface_area_mm2": facts["surface_area_mm2"],
                   "thickness_mm": facts["thickness_mm"],
+                  "thickness_source": facts["thickness_mode"],
                   "target_displacement_mm": facts["target_displacement_mm"],
                   "reference_area_mm2": facts["A0_mm2"], "height_mm": facts["L_mm"],
                   "shell_nodes": facts["shell_nodes"], "shell_elements": facts["shell_elements"],
