@@ -212,6 +212,18 @@ defaults 本身非法、Abaqus launcher 不可用。`run-batch` 结束时如果�
 - `false`：**只在 extract 成功之后**删除 ODB；`.inp/.dat/.msg/.sta` 日志与报告全部保留，
   失败的 case 也**不会**自动删 ODB。
 
+### 曲线 QA（默认关闭）
+
+`runtime.json` 的 `results.curve_qa_policy` 指向一个 QA policy JSON（示例
+`config/quality.example.json`：`ke_ie_limit` 等阈值 + `strain_targets` 目标应变采样点）。
+配置后，extract 阶段会用该 policy 对 `history.csv` 做 curve QA 并写 `results/curve_qa.json`；
+resume 时 extract 已完成也会按当前 policy 重算这一步。它**只记录判定，不是门槛**：QA 失败
+不会让 case 失败，`dataset_eligible` 恒为 `false`。`strain_targets` 是科研参数：示例 policy
+保留论文 11 点（最高 0.300），对 20% 压缩曲线**按设计**判 `TARGET_RANGE_NOT_REACHED`——
+20% 算例应配置匹配目标的 policy，或用 `qa-history` 手动检查。`*Energy Output` /
+`*Node Output` 不写显式采样参数，继承其上方 history 输出的 `history_frequency`（Standard）/
+`history_time_interval_s`（Explicit）；调整 `output.requests` 顺序会改变它们的采样频率。
+
 ## 参数总表
 
 ### 通用（两个求解器都生效）
@@ -267,7 +279,7 @@ defaults 本身非法、Abaqus launcher 不可用。`run-batch` 结束时如果�
 |---|---|
 | 壳单元用 S4/S4R/S4R5 | 当前网格只有 3 节点三角形；4 节点单元需要四边形网格生成器 |
 | 刚板用 R3D3 等 | 刚板是 4 节点四边形网格，只有 R3D4 与之兼容 |
-| 修改 11 点论文曲线采样 | 结果只保存**完整**曲线；11 点以后单独从 `stress_strain.csv` 采样 |
+| 修改 11 点论文曲线采样 | 结果只保存**完整**曲线；11 点（`strain_targets`，可配置）以后用 `qa-history` / curve QA 从曲线采样 |
 | 自动质量缩放优化、ALE、element deletion、damage、adaptive mesh | 本轮显式不做；`mass_scaling` 只支持"用户打开 + 固定 factor" |
 | Explicit 的 bulk viscosity、damping 等 | 需要时再往 `solver.explicit_dynamic` 加字段 + 几行 renderer |
 
@@ -297,6 +309,7 @@ work/<case_id>/
 ├─ mesh/            engine/（冻结 vendor 阶段 00-06 + CGAL 产物）、mesh_result.json、meshcheck_report.json
 ├─ abaqus/          physical.inp、ingredients/、blocks/、build_report.json、*.dat/.msg/.sta/.odb
 ├─ results/         history.csv、stress_strain.csv、summary.json、raw_history.json
+│                   （＋curve_qa.json，仅当 results.curve_qa_policy 配置时）
 ├─ status.json      每 stage 状态 + 两个 config SHA256
 └─ run.log          带时间戳的阶段日志
 ```
@@ -310,9 +323,10 @@ Data Check 和 Solve **就在 `abaqus/` 里跑**，不再把 deck 复制成新�
 
 | 文件 | 内容 |
 |---|---|
-| `results/history.csv` | `time_s` + 实际存在的量（`U3_mm`、`RF3_N`、`ALLIE`、`ALLKE`、`ALLAE`、`ALLPD`、`ALLWK`、`ETOTAL`、`ALLVD`）。缺失的变量**不补 0**，在 summary 的 `missing` 里列出 |
+| `results/history.csv` | `time_s` + 实际存在的量（`u3_mm`、`rf3_N`、`ALLIE`、`ALLKE`、`ALLAE`、`ALLPD`、`ALLWK`、`ETOTAL`、`ALLVD`）。缺失的变量**不补 0**，在 summary 的 `missing` 里列出 |
 | `results/stress_strain.csv` | 完整曲线：`engineering_strain`、`engineering_stress_MPa` |
-| `results/summary.json` | case_id、solver、target/final strain、max_stress_MPa、points、wall_time_s、mass_scaling、`max_ke_ie_ratio`、energy_variables、energy_interpolated、missing |
+| `results/summary.json` | case_id、solver、target/final strain、max_stress_MPa、points、wall_time_s、mass_scaling、`max_ke_ie_ratio`、energy_variables、energy_interpolated、missing、deck_root_sha256 |
+| `results/curve_qa.json` | curve QA 判定（只在 `results.curve_qa_policy` 配置时产生；诊断记录，不是门槛） |
 | `results/raw_history.json` | Abaqus Python worker 的原始导出（含 region 名与选中的 key），用于溯源 |
 
 符号约定：**压缩为正**。`engineering_strain = -U3/H0`，`engineering_stress = -RF3/A0`，
@@ -373,7 +387,7 @@ config/simulation.json ───────────────────
 ## 测试
 
 ```powershell
-pixi run test        # 147 个 unittest（含 Pixi 边界测试）
+pixi run test        # 全量单测 + Pixi 边界测试（数量以实际运行为准，证据目录 work/pixi_tests_*）
 pixi run check       # 三个环境自检
 pixi run cli-help
 ```
@@ -396,8 +410,10 @@ batch 的 JSONL 读取、defaults 合并、重复 case_id、失败隔离、DONE/
   （与历史 `fig1_datacheck_m2_final_001` 完全同类）。
 - Fig.1 Standard + `self_contact=false` Data Check：0 error / 11 warning（新接触写法被接受）。
 - Fig.1 **Explicit**（20% 物理、关自接触）Data Check：0 error，完成标记存在。
-- **Explicit smoke solve**：把 `time_period_s` 改成 1e-3 s（`config/examples/simulation_explicit_smoke.json`，
-  **不是**正式配置），Abaqus/Explicit 真正跑完并提取出曲线；smoke 结果**不是**准静态，只证明链路通畅。
+- **Explicit smoke solve**：把 `time_period_s` 改成 1e-3 s（正式配置未改动；证据在
+  `work/r2_explicit_smoke/`，配置示例在 `config/examples/simulation_explicit_smoke.json`），
+  Abaqus/Explicit 真正跑完（88 s，`last_step_time = target = 0.001`）并提取出 101 点曲线，
+  `max_ke_ie_ratio ≈ 1.10` —— smoke 结果**不是**准静态，只证明链路通畅。
 - 用历史 Standard ODB 重新提取：60 点曲线与旧脚本逐点一致。
 - **真实小批量 batch**（4 个 case、workers=1、smoke simulation，`work/r3_smoke/batch_001/`）：
 
@@ -417,28 +433,11 @@ batch 的 JSONL 读取、defaults 合并、重复 case_id、失败隔离、DONE/
 **没有**验证过的（不要当成结论）：Standard 20% 完整 solve、Explicit 20% 完整 solve、
 科学质量验收、workers>1 的真实并发（只用 mock 测过并发逻辑）、2 万个 case 的实际规模。
 
-## 真实验证状态（2026-09-17）
-
-已在真实 Abaqus 2026 上验证：
-
-- Fig.1 **Standard deck 10/10 SHA 一致**（`run-case` 目录里重建也一致）。
-- Fig.1 mesh data check（`fig1_meshcheck`）+ vendor stage 07 通过。
-- Fig.1 Standard **Data Check**：`DATACHECK_COMPLETED_WITH_WARNINGS`，0 error / 10 warning
-  （与历史 `fig1_datacheck_m2_final_001` 完全同类）。
-- Fig.1 Standard + `self_contact=false` Data Check：0 error / 11 warning（新接触写法被接受）。
-- Fig.1 **Explicit**（20% 物理、关自接触）Data Check：0 error，完成标记存在。
-- **Explicit smoke solve**：把 `time_period_s` 改成 1e-3 s（`work/r2_explicit_smoke/`，**不改正式配置**），
-  Abaqus/Explicit 真正跑完（88 s，`last_step_time = target = 0.001`），提取出 101 点曲线，
-  `max_ke_ie_ratio ≈ 1.10` —— 这个 smoke 结果**不是**准静态，只用于证明链路通畅。
-- 用历史 Standard ODB 重新提取：60 点曲线与旧脚本逐点一致。
-
-**没有**验证过的（不要当成结论）：Standard 20% 完整 solve（本轮被中止，见下）、Explicit 20% 完整 solve、
-科学质量验收、批量运行。
-
-本轮事故记录：我误用 `run-case` + 正式 `config/simulation.json` 启动了一次 Standard solve，
-约 4 分钟后被手动终止（`work/r2_final_std/fig1/abaqus/fig1_solve.sta` 走到 increment 10 / step time 0.0703）；
-该目录里的 deck、Data Check 报告与部分求解产物都保留作为证据，`status.json` 停在 `solve RUNNING`
-（进程被外部杀掉，无法写失败报告）。它的 deck 仍是 10/10 SHA 一致。
+事故记录（历史证据，保留备查）：曾误用 `run-case` + 正式 `config/simulation.json` 启动过一次
+Standard solve，约 4 分钟后被手动终止（`work/r2_final_std/fig1/abaqus/fig1_solve.sta` 走到
+increment 10 / step time 0.0703）；该目录里的 deck、Data Check 报告与部分求解产物都保留作为
+证据，`status.json` 停在 `solve RUNNING`（进程被外部杀掉，无法写失败报告）。它的 deck 仍是
+10/10 SHA 一致。长算例先确认再跑（AGENTS.md 硬约束）。
 
 ## 未实现 / 下一轮
 

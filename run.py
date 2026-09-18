@@ -12,7 +12,6 @@ interpreter is not a supported entry point for this project.
     qa-history one history CSV against the curve QA policy
 """
 import argparse
-import csv
 import json
 import os
 from pathlib import Path
@@ -214,15 +213,10 @@ def _run_stage(args):
 
 def _run_qa_history(args):
     from pipeline.common import write_json
-    from pipeline.curve_qa import assess, load_policy
+    from pipeline.curve_qa import assess, load_policy, read_history_csv
     if Path(args.out).exists():
         raise PipelineError("OUTPUT_EXISTS", "Use a new QA output path.")
-    with open(args.csv, encoding="utf-8-sig", newline="") as stream:
-        reader = csv.DictReader(stream)
-        columns = {key: [] for key in reader.fieldnames or []}
-        for row in reader:
-            for key in columns:
-                columns[key].append(float(row[key]))
+    columns = read_history_csv(args.csv)
     assessment = assess(columns, args.height_mm, args.area_mm2, args.reaction_sign,
                         load_policy(args.policy))
     write_json(args.out, assessment)

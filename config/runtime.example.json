@@ -7,7 +7,8 @@
     "executable": null
   },
   "results": {
-    "keep_odb": true
+    "keep_odb": true,
+    "curve_qa_policy": null
   },
   "datacheck": {
     "cpus": 1,

@@ -578,6 +578,18 @@ def render_outputs(simulation):
     extracted curves have the same shape. ``preselect_history_frequency`` > 0 adds
     the extra preselected history group the Standard baseline always wrote; 0
     omits it.
+
+    Sampling frequency of the ``*Energy Output`` / ``*Node Output`` lines is
+    deliberately implicit (documented inheritance, not an oversight): they carry
+    no sampling parameter, so they inherit the most recent history output state -
+    the ``history_frequency`` line (Standard) or the ``history_time_interval_s``
+    line (Explicit) rendered just above. Editing their order or inserting a new
+    ``*Output, history`` line therefore changes their sampling rate. With
+    ``preselect_history_frequency`` > 0 the same whole-model energy history is
+    requested twice at two different frequencies, so the ODB holds duplicate
+    history keys; the export worker reports them and prefers the plain one
+    (RB-023). Writing an explicit frequency on these lines would change the frozen
+    Fig.1 deck bytes, so it must first be validated by a real Data Check.
     """
     kind = solver_type(simulation)
     block = solver_block(simulation)

@@ -95,7 +95,7 @@ class FakeRunCase:
                                for stage in batch_module.STAGES}})
         results = work_dir / "results"
         results.mkdir(parents=True, exist_ok=True)
-        (results / "history.csv").write_text("time_s,U3_mm\n0,0\n", encoding="utf-8")
+        (results / "history.csv").write_text("time_s,u3_mm\n0,0\n", encoding="utf-8")
         (results / "stress_strain.csv").write_text(
             "engineering_strain,engineering_stress_MPa\n0,0\n", encoding="utf-8")
         write_json(results / "summary.json",

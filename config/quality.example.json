@@ -10,5 +10,6 @@
   "strain_monotonic_tolerance": 1e-12,
   "stress_sign_tolerance_MPa": 1e-8,
   "duplicate_stress_tolerance_MPa": 1e-8,
-  "note": "Only KE/IE<1% is directly the paper criterion. Other values are visible draft engineering choices needing pilot calibration. This policy checks curves only and cannot admit samples to a production dataset."
+  "strain_targets": [0.016, 0.031, 0.055, 0.094, 0.149, 0.165, 0.204, 0.227, 0.267, 0.282, 0.300],
+  "note": "Only KE/IE<1% is directly the paper criterion. Other values are visible draft engineering choices needing pilot calibration. strain_targets are the target strain samples the curve is sampled at (RB-011): configure them to match the experiment (this example keeps the paper's 11 points up to 0.300, so a 20% compression curve fails TARGET_RANGE_NOT_REACHED by design). This policy checks curves only and cannot admit samples to a production dataset."
 }

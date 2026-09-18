@@ -1,6 +1,7 @@
 # HANDOFF_CURRENT
 
-本文件是当前状态的**唯一真值摘要**（2026-09-17，第 3 轮：批量运行打通）。
+本文件是当前状态的**唯一真值摘要**（2026-09-17，第 3 轮：批量运行打通；
+2026-09-18 追加第 4 轮：第三方审查修复，见第 8 节）。
 其余 `docs/*.md` 均已标记 SUPERSEDED，不再同步。
 
 ## 1. 现在能做什么
@@ -66,6 +67,8 @@ pixi run cli run-batch --cases config/cases.jsonl --case-defaults config/case_de
    完整内容留在 case 的 `status.json`。
 5. **中断的 mesh engine**：重新跑 mesh 前把半成品 `engine` 改名保留（否则 vendor 拒绝启动）。
 6. **extract 重跑**：`raw_history.json` 允许在同一 case 目录内覆盖（同一 case 的中间产物）。
+   2026-09-18 起在代码中真正落实：`extract()` 调用 worker 前删除旧的 `raw_history.json`
+   （worker 拒绝已存在的 `--out`），有回归测试锁定（见第 8 节第 1 条）。
 
 ## 5. 已知的科研事实（不要在报告里说成 pipeline bug）
 
@@ -86,3 +89,34 @@ pixi run cli run-batch --cases config/cases.jsonl --case-defaults config/case_de
 不要重新引入 IdentityV2、staging planner、artifact role 框架、schema 迁移层、failure taxonomy、
 plugin/backend 体系、DAG engine、数据库、worker daemon；不要在 retry 里改科学参数；
 不要用 `taskkill /IM standard.exe` 之类的方式清理 Abaqus（并发时会误杀其他 case）。
+
+## 8. 2026-09-18 轮：第三方审查修复（第 4 轮）
+
+来源：用户委托的第三方只读审查（GitHub 公开版），经本地逐条复核确认后施工。
+
+1. **extract 重跑必失败的缺陷**：`extract()` 现在在调用 Abaqus worker 前删除旧的
+   `raw_history.json`（worker 拒绝已存在的 `--out` 路径）。手动 `pixi run cli extract`
+   重跑、extract 中断后续跑、batch `--retry-failed` 补跑都不再撞守卫。
+2. **curve QA 闭环**：`history.csv` 列名改为 canonical `u3_mm` / `rf3_N`（原 `U3_mm`/`RF3_N`
+   与 `curve_qa` 不匹配，`HISTORY_MISSING`）；`curve_qa` 的 11 点 TARGETS 改为 policy 必填
+   `strain_targets`（`config/quality.example.json` 保留论文 11 点为示例；20% 曲线对它按设计
+   报 `TARGET_RANGE_NOT_REACHED`）；`run-case` 在 extract 阶段按 `runtime.results.curve_qa_policy`
+   运行 QA 并写 `results/curve_qa.json`（**默认关闭**；只记录判定，不是门槛；resume 时按当前
+   policy 重算，不触发任何 stage 重跑）。QA 输出键：`strain_targets` / `stress_at_targets_MPa`。
+3. **extract 阶段补 deck SHA 链**：`summary.json` 记录 `deck_root_sha256`，
+   `_stage_done("extract")` 与 build_report 比对（与 datacheck/solve 同一语义）。
+4. **`*Energy Output` / `*Node Output` 频率继承文档化**：`pipeline/build.py::render_outputs`
+   docstring 明确继承 `history_frequency`（Standard）/ `history_time_interval_s`（Explicit）、
+   调整请求顺序会改变采样频率、RB-023 的重复 key 仍会产生。**未改任何渲染字节**，
+   deck 回归 fixture 仍 10/10 一致（显式频率须先真实 Data Check 验证，见 RB-023）。
+5. **文档治理**：7 个 SUPERSEDED docs 的乱码横幅（63 个字面 `?`）修复；README 两份重复
+   「真实验证状态」章节合并（事故记录保留）、测试数改为"命令 + 证据目录"表述；
+   `docs/REVIEW_BACKLOG.md` re-reconciliation：RB-008/011/021/024/025/027/028/030 →
+   RESOLVED，RB-023 标注**仍活跃**（worker 的 plain-key 启发式已文档化但不等于消歧 policy），
+   RB-019 增加新流水线复现线索，30 条 Related Files 全部重写为现行模块名。
+
+验证：`pixi run test` → **core 165 OK + boundary 5 OK**（证据 `work/pixi_tests_hnxdxmd3`）；
+`qa-history` 冒烟：论文 policy 对 20% 曲线 `CURVE_QA_FAILED / TARGET_RANGE_NOT_REACHED`（按设计），
+匹配目标的 policy `CURVE_QA_PASS` 并输出 `stress_at_targets_MPa`。
+**未做真实 Abaqus 复验**（也无需）：本轮未改任何 deck 字节与 Abaqus 调用路径；
+列名变更只影响 results CSV，历史 `work/` 结果保持只读不动。

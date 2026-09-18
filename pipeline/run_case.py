@@ -6,6 +6,7 @@ The whole run lives in one directory, so there is no staging and no per-stage co
         mesh/     frozen vendor stages 00-06 (+ CGAL) and the mesh data check logs
         abaqus/   physical.inp, blocks/, ingredients/, logs and the ODB
         results/  history.csv, stress_strain.csv, summary.json
+                  (+ curve_qa.json when runtime.results.curve_qa_policy is set)
         status.json
         run.log
 
@@ -25,6 +26,7 @@ import time
 from .abaqus import load_runtime, run_datacheck, run_mesh_datacheck, run_solve
 from .build import DECK_ROOT, build
 from .common import (PipelineError, digest, read_json, safe_id, write_json)
+from .curve_qa import record_curve_qa
 from .extract import extract
 from .mesh import load_case, run_mesh
 
@@ -100,7 +102,16 @@ def _stage_done(stage, work_dir):
         return (_deck_root_sha(document) == _deck_root_sha(read_json(datacheck_path))
                 and (work_dir / "abaqus" / odb.get("path", "")).is_file())
     if stage == "extract":
-        return (work_dir / "results" / "summary.json").is_file()
+        summary_path = work_dir / "results" / "summary.json"
+        if not summary_path.is_file():
+            return False
+        build_path = work_dir / "abaqus" / "build_report.json"
+        if not build_path.is_file():
+            return False
+        # Like datacheck/solve, the extract stage is chained to the deck it ran:
+        # a summary from an older deck never counts as done.
+        return (read_json(summary_path).get("deck_root_sha256")
+                == _deck_root_sha(read_json(build_path)))
     raise PipelineError("CONFIG_INVALID", "Unknown stage: " + repr(stage))
 
 
@@ -118,6 +129,26 @@ def results_complete(work_dir):
         return read_json(summary_path).get("success") is True
     except (ValueError, OSError):
         return False
+
+
+def _record_curve_qa(work_dir, results_cfg, log):
+    """Recorded curve QA (``runtime.results.curve_qa_policy``): never a gate.
+
+    Runs whenever the extract stage runs, and also on resume when its results are
+    already done, so ``results/curve_qa.json`` always reflects the policy that is
+    configured right now. A missing or invalid policy file is a loud config error.
+    """
+    policy = (results_cfg or {}).get("curve_qa_policy")
+    if not policy:
+        return None
+    policy_path = Path(policy)
+    if not policy_path.is_absolute():
+        policy_path = ROOT / policy_path
+    work_dir = Path(work_dir)
+    summary = read_json(work_dir / "results" / "summary.json")
+    return record_curve_qa(work_dir / "results", policy_path=policy_path,
+                           height_mm=summary["height_mm"],
+                           area_mm2=summary["reference_area_mm2"], log=log)
 
 
 def set_aside(path, stamp):
@@ -212,7 +243,8 @@ def run_case(case_path, simulation_path, *, case_document=None, work_root=None, 
     write_json(work_dir / "case_used.json", case)
     write_json(work_dir / "simulation_used.json", simulation)
     write_json(status_path, status)
-    keep_odb = (load_runtime(runtime_path).get("results") or {}).get("keep_odb", True)
+    results_cfg = load_runtime(runtime_path).get("results") or {}
+    keep_odb = results_cfg.get("keep_odb", True)
     mesh_dir = work_dir / "mesh"
     deck_dir = work_dir / "abaqus"
     results_dir = work_dir / "results"
@@ -221,6 +253,9 @@ def run_case(case_path, simulation_path, *, case_document=None, work_root=None, 
             if stage not in stale and _stage_done(stage, work_dir):
                 status["stages"].setdefault(stage, {})["status"] = "DONE"
                 logger("%-14s skipped (already done)" % stage)
+                if stage == "extract":
+                    status["stage"] = stage
+                    _record_curve_qa(work_dir, results_cfg, logger)
                 continue
             status["stage"] = stage
             status["status"] = "RUNNING"
@@ -260,6 +295,7 @@ def run_case(case_path, simulation_path, *, case_document=None, work_root=None, 
                 extract(deck_dir, results_dir, case_id=case_id, runtime_path=runtime_path,
                         abaqus_command=abaqus_command,
                         timeout_s=timeout_s or 3600, log=logger)
+                _record_curve_qa(work_dir, results_cfg, logger)
                 if not keep_odb:
                     status["odb_removed"] = drop_odb(deck_dir, logger)
             status["stages"].setdefault(stage, {})["status"] = "DONE"

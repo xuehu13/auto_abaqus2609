@@ -76,9 +76,17 @@ class Recorder:
     def extract(self, deck_dir, results_dir, **kwargs):
         self._note("extract", results_dir)
         Path(results_dir).mkdir(parents=True, exist_ok=True)
-        for name in ("history.csv", "stress_strain.csv"):
-            (Path(results_dir) / name).write_text("a,b\n0,0\n", encoding="utf-8")
-        write_json(Path(results_dir) / "summary.json", {"success": True, "points": 11})
+        # The canonical curve schema extraction writes (0.2 compression curve on
+        # H=10 mm, A=100 mm2), so curve QA can run against it unchanged.
+        (Path(results_dir) / "history.csv").write_text(
+            "time_s,u3_mm,rf3_N,ALLIE,ALLKE,ALLAE\n"
+            "0.0,0.0,0.0,0.0,0.0,0.0\n"
+            "1.0,-2.0,-200.0,4.0,0.001,0.1\n", encoding="utf-8")
+        (Path(results_dir) / "stress_strain.csv").write_text(
+            "engineering_strain,engineering_stress_MPa\n0,0\n", encoding="utf-8")
+        write_json(Path(results_dir) / "summary.json",
+                   {"success": True, "points": 11, "height_mm": 10.0,
+                    "reference_area_mm2": 100.0, "deck_root_sha256": "build-sha"})
 
 
 class RunCaseTests(unittest.TestCase):
@@ -299,6 +307,105 @@ class RunCaseTests(unittest.TestCase):
         document["deck"]["files"]["physical.inp"] = "a-new-deck-sha"
         write_json(build_path, document)
         self.assertFalse(run_case_module._stage_done("datacheck", work_dir))
+
+    def test_a_new_deck_invalidates_the_extract_summary_too(self):
+        self.run_with(Recorder())
+        work_dir = self.work_root / "fig1"
+        self.assertTrue(run_case_module._stage_done("extract", work_dir))
+        summary_path = work_dir / "results" / "summary.json"
+        document = read_json(summary_path)
+        document["deck_root_sha256"] = "an-older-deck-sha"
+        write_json(summary_path, document)
+        self.assertFalse(run_case_module._stage_done("extract", work_dir),
+                         "a summary from an older deck must not count as done")
+
+
+class CurveQaWiringTests(unittest.TestCase):
+    """runtime.results.curve_qa_policy: recorded QA beside the results, never a gate."""
+
+    def setUp(self):
+        self.folder = tempfile.TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+        self.root = Path(self.folder.name)
+        self.case = self.root / "case.json"
+        self.case.write_text(json.dumps(json.loads(Path(CASE).read_text(encoding="utf-8"))),
+                             encoding="utf-8")
+        self.simulation = write_simulation(self.root, name="simulation.json")
+        self.work_root = self.root / "work"
+        self.policy = self.root / "quality.json"
+        self.policy.write_text(json.dumps(
+            {"ke_ie_limit": 0.01, "ae_ie_limit": 0.05, "energy_floor_Nmm": 1e-8,
+             "startup_ke_max_Nmm": 1e-10, "target_strain_tolerance": 1e-7,
+             "strain_monotonic_tolerance": 1e-12, "stress_sign_tolerance_MPa": 1e-8,
+             "duplicate_stress_tolerance_MPa": 1e-8,
+             "strain_targets": [0.0, 0.2]}), encoding="utf-8")
+        self.runtime = self.root / "runtime.json"
+
+    def set_policy(self, policy_path):
+        self.runtime.write_text(json.dumps(
+            {"abaqus": {"launcher": None, "release_required": "2026"},
+             "cgal": {"executable": None},
+             "results": {"keep_odb": True, "curve_qa_policy": policy_path},
+             "datacheck": {"cpus": 1, "timeout_s": 60},
+             "solve": {"cpus": 2, "timeout_s": 60}}), encoding="utf-8")
+
+    def run_case_with(self, recorder):
+        patches = [mock.patch.object(run_case_module, "run_mesh", recorder.mesh),
+                   mock.patch.object(run_case_module, "run_mesh_datacheck",
+                                     recorder.mesh_datacheck),
+                   mock.patch.object(run_case_module, "build", recorder.build),
+                   mock.patch.object(run_case_module, "run_datacheck", recorder.datacheck),
+                   mock.patch.object(run_case_module, "run_solve", recorder.solve),
+                   mock.patch.object(run_case_module, "extract", recorder.extract)]
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+        return run_case(self.case, self.simulation, work_root=self.work_root,
+                        runtime_path=self.runtime, log=lambda message: None)
+
+    def qa(self):
+        return read_json(self.work_root / "fig1" / "results" / "curve_qa.json")
+
+    def test_a_configured_policy_records_the_qa_verdict(self):
+        self.set_policy(str(self.policy))
+        status = self.run_case_with(Recorder())
+        self.assertEqual(status["status"], "DONE")
+        assessment = self.qa()
+        self.assertEqual(assessment["status"], "CURVE_QA_PASS")
+        self.assertEqual(assessment["stress_at_targets_MPa"], [0.0, 2.0])
+        self.assertFalse(assessment["dataset_eligible"])
+
+    def test_without_a_policy_no_qa_is_recorded(self):
+        self.set_policy(None)
+        status = self.run_case_with(Recorder())
+        self.assertEqual(status["status"], "DONE")
+        self.assertFalse((self.work_root / "fig1" / "results" / "curve_qa.json").is_file())
+
+    def test_resume_refreshes_the_qa_with_the_current_policy_without_recomputation(self):
+        self.set_policy(str(self.policy))
+        self.run_case_with(Recorder())
+        self.assertEqual(self.qa()["status"], "CURVE_QA_PASS")
+        # The experiment target changes: the same finished results now miss the
+        # (shifted) targets, and the next resume records that - without redoing
+        # any stage and without failing the case.
+        self.policy.write_text(json.dumps(
+            {"ke_ie_limit": 0.01, "ae_ie_limit": 0.05, "energy_floor_Nmm": 1e-8,
+             "startup_ke_max_Nmm": 1e-10, "target_strain_tolerance": 1e-7,
+             "strain_monotonic_tolerance": 1e-12, "stress_sign_tolerance_MPa": 1e-8,
+             "duplicate_stress_tolerance_MPa": 1e-8,
+             "strain_targets": [0.5, 0.9]}), encoding="utf-8")
+        recorder = Recorder()
+        status = self.run_case_with(recorder)
+        self.assertEqual(recorder.calls, [], "QA refresh must not recompute any stage")
+        self.assertEqual(status["status"], "DONE")
+        assessment = self.qa()
+        self.assertEqual(assessment["status"], "CURVE_QA_FAILED")
+        self.assertIn("TARGET_RANGE_NOT_REACHED", assessment["failures"])
+
+    def test_a_missing_policy_file_is_a_loud_error(self):
+        self.set_policy(str(self.root / "does_not_exist.json"))
+        with self.assertRaises(PipelineError):
+            self.run_case_with(Recorder())
 
 
 class OdbRetentionTests(unittest.TestCase):

@@ -20,6 +20,7 @@ from pathlib import Path
 import numpy as np
 
 from .abaqus import abaqus_env, load_runtime, resolve_launcher
+from .build import DECK_ROOT
 from .common import PipelineError, file_hash, read_json, write_json
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -85,17 +86,18 @@ def build_results(raw, *, case_id, solver, height_mm, area_mm2, target_strain,
         raise PipelineError("EXTRACT_INCOMPLETE", "The ODB has no RP_TOP RF3 history.")
     axis = np.asarray([point[0] for point in series["U3"]], dtype=float)
     displacement = np.asarray([point[1] for point in series["U3"]], dtype=float)
-    columns = {"time_s": axis, "U3_mm": displacement}
+    # Column names are the canonical QA schema (pipeline/curve_qa.py reads them).
+    columns = {"time_s": axis, "u3_mm": displacement}
     interpolated = False
     reaction, flag = _align(series["RF3"], axis)
-    columns["RF3_N"] = reaction
+    columns["rf3_N"] = reaction
     interpolated = interpolated or flag
     for variable in ENERGY_VARIABLES:
         if variable in raw["energy"]:
             columns[variable], flag = _align(raw["energy"][variable], axis)
             interpolated = interpolated or flag
     strain = -displacement / height_mm
-    stress = -np.asarray(columns["RF3_N"], dtype=float) / area_mm2
+    stress = -np.asarray(columns["rf3_N"], dtype=float) / area_mm2
     ke_ie = None
     if "ALLIE" in columns and "ALLKE" in columns:
         # Diagnostics only: a high ratio is reported, never repaired automatically.
@@ -174,10 +176,13 @@ def extract(deck_dir, results_dir, *, case_id=None, step="Compression", runtime_
     node_labels = {"RP_TOP": labels["rp_top"], "RP_X_CTRL": labels["rp_x"],
                    "RP_Y_CTRL": labels["rp_y"]}
     raw_path = Path(results_dir) / "raw_history.json"
-    # The Abaqus Python worker writes raw_history.json with a plain open(), so the
-    # results directory has to exist before it runs. Re-running extraction inside
-    # the same case directory overwrites this intermediate file on purpose.
+    # The Abaqus Python worker writes raw_history.json with a plain open() and
+    # refuses an existing output path, so a stale intermediate from an earlier
+    # attempt (interrupted run, manual re-extraction) is removed here: re-running
+    # extraction inside the same case directory overwrites it on purpose.
     Path(results_dir).mkdir(parents=True, exist_ok=True)
+    if raw_path.exists():
+        raw_path.unlink()
     log("  reading ODB with abaqus python ...")
     raw = export_raw(odb_path, raw_path, step=step, node_labels=node_labels,
                      node_variables=NODE_VARIABLES, energy_variables=ENERGY_VARIABLES,
@@ -192,6 +197,9 @@ def extract(deck_dir, results_dir, *, case_id=None, step="Compression", runtime_
         wall_time_s=solve_report.get("wall_time_s"),
         mass_scaling=(simulation["solver"][solver].get("mass_scaling")
                       if solver == "explicit_dynamic" else None))
+    # Provenance: the deck root SHA this extraction belongs to, so run_case can
+    # chain the extract stage to the deck like datacheck/solve already do.
+    summary["deck_root_sha256"] = (build_report.get("deck") or {}).get("files", {}).get(DECK_ROOT)
     written = write_results(results_dir, columns, strain, stress, summary)
     log("  results written to " + str(results_dir))
     return dict(summary, results=written, odb=str(odb_path), raw_history=str(raw_path))

@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
+import shutil
 import sys
 import tempfile
 import unittest
@@ -13,7 +14,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
 from pipeline import extract as extract_module                          # noqa: E402
-from pipeline.common import PipelineError, read_json                    # noqa: E402
+from pipeline.common import PipelineError, read_json, write_json         # noqa: E402
 from pipeline.extract import build_results, write_results              # noqa: E402
 
 
@@ -104,7 +105,9 @@ class ResultComputationTests(unittest.TestCase):
                 write_results(folder, columns, strain, stress, summary)
                 with (folder / "history.csv").open(encoding="utf-8", newline="") as stream:
                     rows = list(csv.DictReader(stream))
-                self.assertEqual(sorted(rows[0]), ["ALLIE", "ALLKE", "RF3_N", "U3_mm", "time_s"])
+                self.assertEqual(sorted(rows[0]),
+                                 ["ALLIE", "ALLKE", "rf3_N", "time_s", "u3_mm"],
+                                 "history.csv uses the canonical curve_qa column schema")
                 self.assertEqual(len(rows), 2)
                 with (folder / "stress_strain.csv").open(encoding="utf-8", newline="") as stream:
                     curve = list(csv.reader(stream))
@@ -178,6 +181,76 @@ class WorkerInvocationTests(unittest.TestCase):
         finally:
             extract_module.subprocess.run = original
         self.assertEqual(caught.exception.code, "EXTRACT_FAILED")
+
+
+class ExtractRerunTests(unittest.TestCase):
+    """Re-running extraction in the same case directory must succeed.
+
+    The Abaqus Python worker refuses an existing --out path, so extract() has to
+    remove the stale raw_history.json intermediate itself. The fake worker below
+    enforces the same guard the real worker has, so this test fails if the
+    removal disappears again.
+    """
+
+    def setUp(self):
+        self.folder = Path(tempfile.mkdtemp(prefix="rerun_"))
+        self.addCleanup(lambda: shutil.rmtree(self.folder, ignore_errors=True))
+        self.deck = self.folder / "abaqus"
+        self.deck.mkdir()
+        (self.deck / "job.odb").write_bytes(b"odb")
+        write_json(self.deck / "build_report.json",
+                   {"status": "BUILT", "case_id": "mini",
+                    "deck": {"files": {"physical.inp": "deck-sha-1"}},
+                    "model": {"labels": {"rp_top": 13, "rp_x": 10, "rp_y": 11},
+                              "height_mm": 10.0, "reference_area_mm2": 100.0},
+                    "simulation": {"solver": {"type": "standard_dynamic_implicit"},
+                                   "loading": {"target_compression_strain": 0.2}}})
+        write_json(self.deck / "solve_report.json",
+                   {"status": "SOLVE_COMPLETED",
+                    "abaqus_output": {"odb": {"path": "job.odb"}}})
+        self.launcher = self.folder / "fake_abaqus.bat"
+        self.launcher.write_text("@echo off\r\n", encoding="ascii")
+
+    def extract_with_guarded_worker(self, results_dir, runs):
+        """extract() with a fake worker that mimics the real existing-output guard."""
+
+        def fake_run(argv, **kwargs):
+            out = Path(argv[argv.index("--out") + 1])
+            if out.exists():  # the real worker raises "Output already exists"
+                class Failed:
+                    returncode, stdout, stderr = 1, "", "Output already exists"
+                return Failed()
+            runs.append(out)
+            out.write_text(json.dumps(raw_history(displacement=[0.0, -2.0],
+                                                  reaction=[0.0, -100.0])),
+                           encoding="utf-8")
+
+            class Completed:
+                returncode, stdout, stderr = 0, "", ""
+            return Completed()
+
+        original = extract_module.subprocess.run
+        extract_module.subprocess.run = fake_run
+        try:
+            return extract_module.extract(self.deck, results_dir, case_id="mini",
+                                          abaqus_command=str(self.launcher), log=lambda m: None)
+        finally:
+            extract_module.subprocess.run = original
+
+    def test_second_extraction_overwrites_the_raw_intermediate(self):
+        runs = []
+        results = self.folder / "results"
+        first = self.extract_with_guarded_worker(results, runs)
+        second = self.extract_with_guarded_worker(results, runs)
+        self.assertEqual(len(runs), 2, "the second extraction must re-export, not fail")
+        self.assertEqual(second["points"], first["points"])
+        self.assertEqual(second["final_strain"], first["final_strain"])
+
+    def test_summary_records_the_deck_root_sha(self):
+        summary = self.extract_with_guarded_worker(self.folder / "results", runs=[])
+        self.assertEqual(summary["deck_root_sha256"], "deck-sha-1")
+        self.assertEqual(read_json(self.folder / "results" / "summary.json")["deck_root_sha256"],
+                         "deck-sha-1")
 
 
 if __name__ == "__main__":

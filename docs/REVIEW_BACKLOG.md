@@ -1,6 +1,7 @@
-> **[SUPERSEDED 2026-09-16]** ??????????????identity v2 / staging planner /
-> ?? schema ???????????? CLI ???????????? `README.md`?
-> `AGENTS.md`?`docs/HANDOFF_CURRENT.md`?????????????????????
+> **[SCOPE NOTE 2026-09-18]** 条目中引用的旧架构（identity v2 / staging planner /
+> 三层 schema / 旧 CLI / 旧配置文件）已被单目录流水线取代；本文件按"状态只演进、
+> 条目永不删除"的规则继续维护（状态更新与引用重写）。当前架构以 `README.md`、
+> `AGENTS.md`、`docs/HANDOFF_CURRENT.md` 为准。
 
 # Review Backlog（review / 审查意见总账）
 
@@ -144,6 +145,7 @@ REVIEW_BACKLOG 默认不读。
 > 扩充登记：2026-09-16（对照 checkpoint 22e1a59 的完整外部 review，26 项全覆盖）。
 > Governance 收紧：2026-09-16（AI execution policy，本节）。
 > Reconciliation 登记：2026-09-16（来源：DeepSeek independent review + ChatGPT secondary review；新增 RB-023..RB-030，并就地更新 RB-003 / RB-013 / RB-014 / RB-015 / RB-019 / RB-021。本轮**只登记与文档维护**，未施工任何新技术建议；`D1..D8` 表示该轮 review 的条目编号）。
+> Reconciliation 施工：2026-09-18（来源：用户委托的第三方只读审查〔GitHub 公开版〕，经逐条复核确认后由用户授权施工）。缺陷修复：extract 重跑覆盖 `raw_history.json`、`history.csv` 列名对齐 canonical schema、curve_qa `strain_targets` 配置化（RB-011）、curve QA 接入 run_case extract 阶段、extract 阶段补 deck SHA 链；`*Energy Output`/`*Node Output` 频率继承在 `pipeline/build.py` 文档化。状态更新：RB-008 / RB-011 / RB-021 / RB-024 / RB-025 / RB-027 / RB-028 / RB-030 → **RESOLVED**；RB-023 标注**仍活跃**；RB-019 增加新流水线复现线索；全部失效的 Related Files 重写到现行模块名。测试：`pixi run test` → core 165 OK + boundary 5 OK（证据 `work/pixi_tests_hnxdxmd3`）。
 
 ## 索引
 
@@ -156,10 +158,10 @@ REVIEW_BACKLOG 默认不读。
 | RB-005 | 7 | docs | RESOLVED | MEDIUM | 5-case ad-hoc ODB stress-strain diagnostic 已发生但未记录；M4 状态表述过时 |
 | RB-006 | 10 | pipeline | RESOLVED | MEDIUM | M2 Data Check 未检查 zero-byte ODB |
 | RB-007 | 11 | pipeline/docs | RESOLVED | LOW | STAGES 中 SOLVE 描述宣称 watchdog，但 production watchdog 未实现 |
-| RB-008 | 4 | config schema | DEFERRED | MEDIUM | numerics config 混合 physical numerics 与 runtime/orchestration 参数 |
+| RB-008 | 4 | config schema | RESOLVED | MEDIUM | numerics config 混合 physical numerics 与 runtime/orchestration 参数（2026-09-17 重构：simulation.json / runtime.json 职责分离） |
 | RB-009 | 12 | repo | DEFERRED | LOW/MEDIUM | .gitattributes `* -text` 作用于全仓库 |
 | RB-010 | 13 | data/reproducibility | RESOLVED | MEDIUM | 30 validation equations 已作为 tracked `references/validation_30_surfaces.md` 发布 |
-| RB-011 | 14 | pipeline | DEFERRED | HIGH (M4/M5) | curve_qa TARGETS 硬编码到 0.30 |
+| RB-011 | 14 | pipeline | RESOLVED | HIGH (M4/M5) | curve_qa TARGETS 硬编码到 0.30（2026-09-18：`strain_targets` 进 QA policy） |
 | RB-012 | 15 | performance | DEFERRED | HIGH | standard_parallel=all / threads_per_mpi_process 性能债 |
 | RB-013 | 17+18+19 | mechanics QA | DEFERRED | HIGH | contact warnings QA / PBC large-deformation / quasi-static validity |
 | RB-014 | 20 | reliability | DEFERRED | HIGH | solve timeout / child process tree / resume & reconciliation |
@@ -167,18 +169,18 @@ REVIEW_BACKLOG 默认不读。
 | RB-016 | 16 | performance evidence | NO_ACTION | LOW | cpus=8 + solver 在本机反而更慢（结论已记录） |
 | RB-017 | 21 | repo policy | NO_ACTION (CURRENT) | HIGH | attempt 不覆盖原则保持不变 |
 | RB-018 | 22 | scope | CURRENT | MEDIUM | temporary local batch runner ≠ production batch framework |
-| RB-019 | 23 | mesh | DEFERRED | MEDIUM | ref30_01/ref30_22 mesh 失败原因未解释（INVESTIGATION PENDING） |
+| RB-019 | 23 | mesh | DEFERRED | MEDIUM | ref30_01/ref30_22 mesh 失败原因未解释（INVESTIGATION PENDING；2026-09-18：新流水线可稳定复现同曲面失败，见 RB-019 追加） |
 | RB-020 | 24 | solve | DEFERRED | MEDIUM/HIGH | difficult solve cases 02/03/04 尚未归因（INVESTIGATION PENDING） |
-| RB-021 | 25 | config identity | DEFERRED | LOW/MEDIUM | model/scaffold/build identity 分层与 runtime 信息混入的长期债 |
+| RB-021 | 25 | config identity | RESOLVED | LOW/MEDIUM | model/scaffold/build identity 分层与 runtime 信息混入的长期债（2026-09-17 重构：三层 key 已删除，身份 = 配置内容 digest） |
 | RB-022 | 26 | material | CURRENT LIMITATION | HIGH | demo_surrogate 不是 production material，曲线不可作真实材料解释 |
-| RB-023 | D1 | M4 extraction / ODB history | ACCEPTED | HIGH | ODB 内重复整体能量 history key 必须由 M4 显式消歧（不得靠后缀猜 provenance） |
-| RB-024 | D2 | M4 data contract | ACCEPTED | HIGH | M4 必须先冻结 "RAW → normalization → QA" 的 versioned canonical extraction schema |
-| RB-025 | D3 | M4 provenance / PBC QA | ACCEPTED | MEDIUM | M4 需要 extraction context（solve_report / model_manifest / pbc_map / output profile identity + SHA 链） |
+| RB-023 | D1 | M4 extraction / ODB history | ACCEPTED（仍活跃） | HIGH | ODB 内重复整体能量 history key 必须由 extraction 显式消歧（当前默认配置仍产生重复；worker 仅用已文档化的 plain-key 启发式） |
+| RB-024 | D2 | M4 data contract | RESOLVED | HIGH | M4 必须先冻结 "RAW → normalization → QA" 的 versioned canonical extraction schema（2026-09-17/18：extract.py canonical 三件套 + curve QA 闭环；schema version 载体未单独实现） |
+| RB-025 | D3 | M4 provenance / PBC QA | RESOLVED | MEDIUM | M4 需要 extraction context（2026-09-17 重构：staging 废除，`ingredients/pbc_map.json` 与 deck 同目录且 SHA 进 build_report） |
 | RB-026 | D5 | storage / batch reliability | DEFERRED (M7/M8) | MEDIUM/HIGH | 大批量前必须先定义 artifact retention / storage policy |
-| RB-027 | D4 | pipeline robustness | DEFERRED | LOW/MEDIUM | M2 completion marker 来源（stdout vs .dat）与大小写策略不一致（跨版本 false negative 风险） |
-| RB-028 | D6 | maintainability | DEFERRED | LOW | include 清单与诊断解析逻辑多处重复（单一真值缺位） |
+| RB-027 | D4 | pipeline robustness | RESOLVED | LOW/MEDIUM | M2 completion marker 来源（stdout vs .dat）与大小写策略不一致（2026-09-17 重构：log+dat+stdout 合并小写判定，按 solver 区分 token） |
+| RB-028 | D6 | maintainability | RESOLVED | LOW | include 清单与诊断解析逻辑多处重复（2026-09-17 重构：`INCLUDE_ORDER` 与 `parse_diagnostics` 均为单一真值） |
 | RB-029 | D8 | repo policy | DEFERRED | LOW | 仓库尚无 License |
-| RB-030 | D7 | reproducibility | DEFERRED | MEDIUM | 公开仓库缺 baseline fingerprints（key/SHA/expected completion status；ODB SHA 不是科学复现判据） |
+| RB-030 | D7 | reproducibility | RESOLVED | MEDIUM | 公开仓库缺 baseline fingerprints（2026-09-17：tracked `tests/fixtures/fig1_20pct_regression/deck_sha256.json`，ODB SHA 语义边界已在文件内声明） |
 
 ## 条目详情
 
@@ -191,6 +193,7 @@ REVIEW_BACKLOG 默认不读。
 - 当前决定：新增 tracked 文件 `config/physics.fig1_20pct_validation.json`，与本地 M3 physics **逐字段一致（byte-identical）**；`physics.example.json`（30%）保留不动，README 明确区分两者。
 - 下一步：无需进一步动作；30% target solve 验证属后续里程碑。
 - 相关文件：`config/physics.fig1_20pct_validation.json`、`config/physics.example.json`、`README.md`。
+- Re-reconciliation（2026-09-18）：上列两个 `physics.*.json` 已在重构中删除；20% validation profile 现即 `config/simulation.json`（`loading.target_compression_strain = 0.2`），deck 指纹见 `tests/fixtures/fig1_20pct_regression/deck_sha256.json`。相关文件已重写为：`config/simulation.json`、`README.md`。
 
 ### RB-002 — environment.local.json 损坏静默 fallback；release 要求未强制
 
@@ -201,6 +204,7 @@ REVIEW_BACKLOG 默认不读。
 - 当前决定：新增 `load_environment_config`（损坏/非法 schema → `CONFIG_INVALID`，不 fallback）与 `enforce_release_gate`（required release 与 launcher 报告 release 不一致或无法确定 → `ABAQUS_RELEASE_MISMATCH`；gate 位于 `reserve_directory` 之前，不产生 partial attempt）；datacheck 与 solve 均接入；report 记录 `release_gate`。回归测试：malformed env 不 fallback、2026/2025 → fail、2026/2026 → pass、unknown → fail、gate 前 no attempt。
 - 下一步：无需进一步动作；launcher 系统不大重构。
 - 相关文件：`pipeline/physical_datacheck.py`、`pipeline/physical_solve.py`、`tests/test_core.py`。
+- Re-reconciliation（2026-09-18）：`load_environment_config` / `enforce_release_gate` / `resolve_launcher` / `query_release` 现集中在 `pipeline/abaqus.py`（datacheck 与 solve 共用）；`tests/test_core.py` 已拆分为按模块的 `tests/test_*.py`。相关文件已重写为：`pipeline/abaqus.py`、`tests/test_abaqus.py`。
 
 ### RB-003 — HANDOFF / ROADMAP / IMPLEMENTATION_PLAN 旧状态文字
 
@@ -214,6 +218,7 @@ REVIEW_BACKLOG 默认不读。
 - 追加记录（2026-09-16 maintenance checkpoint，follow-up）：RB-003 的"更新为当前真实值"**再次漂移**——`3d99f8a` 之后 `tests/test_core.py` 的 test method 数由 142 增至 151，而 `docs/PROJECT_STATUS.md` / `docs/HANDOFF_CURRENT.md` 仍写 142/142。本轮按真实执行结果（`pixi run test` → core `Ran 151 tests ... OK` + boundary `Ran 8 tests ... OK`）把 **CURRENT 表述改为 checkpoint-bound 表述**；per-milestone 历史数量（115 / 138）**保留不改**，仅加 `[HISTORICAL]` 标注。
 - 长期决定（沿用并强化）：**测试数量必须与"某次验证 checkpoint"绑定，不允许把一个旧数量长期当作当前真值**；文档应记录命令（`pixi run test`）与证据目录，而不是写死数字。
 - 状态：**保持 RESOLVED**（本次为同一问题的 follow-up maintenance，不新开条目）。
+- Re-reconciliation follow-up（2026-09-18）：第三方审查实测 README 又写死"147 个 unittest"（当前实际 core 150 + boundary 5，模块拆分后旧 `tests/test_core.py` 的 151/8 也已失效）。本轮把 README 测试行改为"命令 + 证据目录（`work/pixi_tests_*`）"表述，不再写死数字——沿用上面的长期决定。
 
 ### RB-004 — Kernel-Power 事件 ID 107/109 记录不一致
 
@@ -244,6 +249,7 @@ REVIEW_BACKLOG 默认不读。
 - 当前决定：Data Check accepted 现在要求 required artifacts（dat/odb）**存在且非零字节**；零字节 → `DATACHECK_FAILED` + failure_reasons "zero-byte required artifacts: ..."。不加任何额外科学判断。回归测试 `test_zero_byte_datacheck_odb_fails`。
 - 下一步：无需进一步动作。
 - 相关文件：`pipeline/physical_datacheck.py`、`tests/test_core.py`。
+- Re-reconciliation（2026-09-18）：zero-byte required artifacts 检查现在 `pipeline/abaqus.py`（datacheck 与 solve 共用 artifact 判定）；相关文件已重写为：`pipeline/abaqus.py`、`tests/test_abaqus.py`。
 
 ### RB-007 — STAGES 中 SOLVE 描述宣称 watchdog
 
@@ -254,11 +260,12 @@ REVIEW_BACKLOG 默认不读。
 - 当前决定：描述改为 "Dynamic implicit solve with resource limits; production watchdog/recovery is deferred to M7"。只改措辞，不实现 watchdog。
 - 下一步：无需进一步动作。
 - 相关文件：`pipeline/mesher_adapter.py`。
+- Re-reconciliation（2026-09-18）：`pipeline/mesher_adapter.py` 已删除；现行 stage 清单与 `pixi run plan` 文本在 `pipeline/run_case.py`（`STAGES`）与 `run.py`，solve 描述不再宣称 watchdog。相关文件已重写为：`pipeline/run_case.py`、`run.py`。
 
 ### RB-008 — numerics config 混合 physical numerics 与 runtime/orchestration 参数
 
 - 日期：2026-09-16；来源：外部 review（checkpoint 22e1a59）
-- 优先级：MEDIUM；状态：**DEFERRED**；类别：config schema
+- 优先级：MEDIUM；状态：**RESOLVED**（2026-09-17 重构）；类别：config schema
 - 问题：`config/numerics.example.json` 同时包含两类职责——
   - 物理/求解步数值：`initial_increment_s`、`minimum_increment_s`、`maximum_increment_s`、`maximum_increments`；
   - runtime / orchestration：`cpus_per_job`、`maximum_concurrent_solves`、`max_attempts_including_base`、`solver_wall_limit_s`、stagnation 等。
@@ -266,6 +273,7 @@ REVIEW_BACKLOG 默认不读。
 - 当前决定：DEFERRED。未来拆分为 physical numerics vs runtime/resources/reliability 两类 schema；本轮不改 schema（影响 builder 契约与已验证案例身份键）。
 - 下一步：M4/M5 config 设计时统一处理；与 RB-021（identity 分层）联动。
 - 相关文件：`config/numerics.example.json`、`pipeline/physical_builder.py`、`config/solve_runtime.example.json`。
+- 解决记录（2026-09-18 re-reconciliation）：2026-09-17 重构后配置收敛为 `config/simulation.json`（纯物理/数值/输出参数，进入 deck 与 case 身份摘要）与 `config/runtime.json`（机器/runtime 参数：launcher、cpus、timeout、`results.keep_odb`，**不进** case 身份）；`numerics.*.json` / `solve_runtime.*.json` 已删除。物理与 runtime 参数不再可能混入同一 identity。相关文件已重写为：`config/simulation.json`、`config/runtime.json`、`pipeline/build.py`、`pipeline/run_case.py`。
 
 ### RB-009 — .gitattributes `* -text` 作用范围过宽
 
@@ -290,11 +298,12 @@ REVIEW_BACKLOG 默认不读。
 ### RB-011 — curve_qa TARGETS 硬编码到 0.30
 
 - 日期：2026-09-16；来源：Pre-M4 cleanup 审查 + 外部 review
-- 优先级：HIGH（for M4/M5）；状态：**DEFERRED（TO M4/M5）**；类别：pipeline
+- 优先级：HIGH（for M4/M5）；状态：**RESOLVED**（2026-09-18）；类别：pipeline
 - 问题：`pipeline/curve_qa.py` 的 11 点 TARGETS 最终到 `0.300`（按历史手工 30% 目标标定），因此不能直接用于 20% validation case 或任意 compression target。
 - 当前决定：DEFERRED TO M4/M5。未来 target/sampling 必须 config-driven 并禁止外推；现在不改。
 - 下一步：M4/M5 设计 curve-QA policy 时处理。
 - 相关文件：`pipeline/curve_qa.py`、`config/quality.example.json`。
+- 解决记录（2026-09-18）：模块级 `TARGETS` 常量删除；QA policy 新增必填 `strain_targets`（校验：≥2 个有限数、严格递增，非法值 `CONFIG_INVALID`）；`config/quality.example.json` 保留论文 11 点为示例并在 `note` 中声明 20% 曲线对它会**按设计**判 `TARGET_RANGE_NOT_REACHED`；QA 输出键改为 `strain_targets` / `stress_at_targets_MPa`。回归测试：`tests/test_curve_qa.py`。相关文件不变并追加：`tests/test_curve_qa.py`。
 
 ### RB-012 — standard_parallel=all / threads_per_mpi_process 性能债
 
@@ -366,6 +375,7 @@ REVIEW_BACKLOG 默认不读。
 - 当前决定：原则保持。未来 resume 应"创建新 attempt + provenance/reconciliation"，而不是覆盖旧证据。
 - 下一步：无（M7 resume 设计时遵守此原则，见 RB-014）。
 - 相关文件：`pipeline/common.py`（`reserve_directory`）、`tests/test_core.py`（OUTPUT_EXISTS 测试）、`README.md`（attempt 与结果目录）。
+- Re-reconciliation（2026-09-18）：OUTPUT_EXISTS 测试现在 `tests/test_regression.py`；stage 目录替换语义为 `pipeline/run_case.py::set_aside`（改名保留，永不删除）。相关文件已重写为：`pipeline/common.py`、`pipeline/run_case.py`、`tests/test_regression.py`。
 
 ### RB-018 — temporary local batch runner ≠ production batch framework
 
@@ -389,6 +399,7 @@ REVIEW_BACKLOG 默认不读。
 - 当前决定：DEFERRED。以后单独开小轮次诊断（与批量恢复解耦）；冻结 vendor mesher 原则不变。
 - 下一步：用户批准的诊断轮次。
 - 相关文件：`docs/EXPERIMENT_30_SURFACES_20260915.md`、`docs/TROUBLESHOOTING.md`（30曲面 runner 条目）。
+- 追加线索（2026-09-18，仍仅为 observed evidence / investigation hint，不是 root cause）：新单目录流水线**稳定复现**同曲面失败——`work/r3_smoke/batch_001/` 中 `diverse_01` 在冻结 vendor 阶段 05 判 PBC 配对非双射（历史 `ref30_01` 对同一曲面同样 `STEP 05 STATUS: FAIL`），batch 正确记为 `MESH_STAGE_FAILED` 并继续；见 README「真实验证状态」。相比 30 曲面临时 runner，这是干净得多的诊断入口（无 staging、无 double-reserve 历史包袱）。诊断仍需用户批准的专门轮次。相关文件追加：`README.md`。
 
 ### RB-020 — difficult solve cases 02/03/04 尚未归因
 
@@ -403,7 +414,7 @@ REVIEW_BACKLOG 默认不读。
 ### RB-021 — config identity 分层的长期技术债
 
 - 日期：2026-09-16；来源：外部 review
-- 优先级：LOW/MEDIUM；状态：**DEFERRED**；类别：config identity
+- 优先级：LOW/MEDIUM；状态：**RESOLVED**（2026-09-17 重构）；类别：config identity
 - 问题：当前存在 `model_key` / `scaffold_key` / `build_key` 三层 identity，而 numerics/runtime 信息可能混入 identity（见 RB-008）。在未来 batch/cache 建立之前，需统一 physical identity / execution identity / artifact provenance identity 的边界。
 - 当前决定：DEFERRED。当前不大改（会影响已验证案例的身份键）。
 - 下一步：batch/cache 阶段设计时统一；与 RB-008 联动。
@@ -411,6 +422,7 @@ REVIEW_BACKLOG 默认不读。
 - 追加（2026-09-16 DeepSeek review）：除"三层 identity 分层"外，还存在**对字节/格式过敏**的问题——`scaffold_key` 含 numerics **raw file SHA**（仅重排/重新格式化该 JSON，identity 即改变，而渲染出的 deck 完全不变），并且 `model_key` 把人类可读元数据（`profile_id`、`note`、`validated_to_target`）计入物理身份；`mesh_request_key` 把 `pixi.lock` / CGAL exe 哈希计入"网格身份"（保守但会阻止合法复用）。
 - 明确分类需求（长期）：**physical identity / execution identity / artifact provenance identity** 三者必须分开，physical identity 只允许来自语义规范化。
 - 本轮不改（这些 key 已属历史证据的一部分）；状态继续 **DEFERRED**。
+- 解决记录（2026-09-18 re-reconciliation）：2026-09-17 重构删除了三层 key 与全部 key 分层——case 身份 = `digest(case)`（内容摘要，与文件字节无关）、simulation 身份 = `digest(simulation)`；同一 case 以文件或 batch 内存记录提供时身份相同（实测 `run-case --case <batch>/fig1/case_used.json` 全部 skip）。`physical_builder.py` / `numerics.example.json` 已不存在。相关文件已重写为：`pipeline/run_case.py`（`_invalidated` / resume 逻辑）。
 
 ### RB-022 — demo material 不是 production material
 
@@ -420,11 +432,12 @@ REVIEW_BACKLOG 默认不读。
 - 当前决定：CURRENT LIMITATION，如实记录（README 已知限制已有相应条目）。未来科研使用前必须明确材料来源与标定。
 - 下一步：正式科研数据生产前定型材料（含来源、适用范围、`allow_production_dataset` 语义）。
 - 相关文件：`config/materials/demo_surrogate.json`、`README.md`（已知限制）、`docs/PROJECT_STATUS.md`。
+- Re-reconciliation（2026-09-18）：`config/materials/demo_surrogate.json` 已删除；材料现内联在 `config/simulation.json` 的 `material` block（进入 case 身份摘要与 build report）。限制本身不变，由报告的 `claims.dataset_eligible=false` 与 summary `note` 承担。相关文件已重写为：`config/simulation.json`、`README.md`。
 
 ### RB-023 — M4 必须先消歧 ODB 内重复的整体能量 history key
 
 - 日期：2026-09-16；来源：DeepSeek independent review + ChatGPT secondary review（D1，2026-09-16）
-- 优先级：HIGH；状态：**ACCEPTED**（作为 M4 extraction 的明确 contract，尚未实现）；类别：M4 extraction / ODB history
+- 优先级：HIGH；状态：**ACCEPTED（仍活跃，2026-09-18 复核确认）**；类别：M4 extraction / ODB history
 - **Observed Fact**：当前 accepted 输出基线（`config/outputs.example.json` / `work/fig1_solve_m3_20pct_003/blocks/outputs.inc`）**同时**包含"显式 `*Energy Output`（`frequency=1`）"与"`*Output, history, variable=PRESELECT, frequency=10`"。在已有 M3 ODB 的 history inventory（`work/diagnostic_stress_strain_5cases_20260916/fig1_regions.json`）中，同一 `Assembly Assembly-1` region 内出现重复量：`ALLKE` 与 `ALLKE (Repeated: key = Compression, 10)`、`ALLIE` / `(…, 20)`、`ALLAE` / `(…, 17)`、`ALLPD` / `(…, 13)`、`ALLWK` / `(…, 12)`、`ETOTAL` / `(…, 21)`。
 - **Inference（不得当作已证实事实）**：重复来自上述两个请求同时覆盖同一组整体能量量，且两者采样频率不同（1 vs 10）。**不得**写成"没有 `Repeated` 后缀的那一条就是正确序列"——该命名不应被假设为稳定的 public API。
 - **Recommendation / Decision（未来 M4 必须执行；本轮 DO NOT IMPLEMENT）**：
@@ -435,11 +448,16 @@ REVIEW_BACKLOG 默认不读。
   5. **不允许**靠字符串后缀推断 provenance。
 - 本轮：**DO NOT IMPLEMENT**（未修改 outputs、未修改 extraction、未重跑任何作业）。
 - 相关文件：`config/outputs.example.json`、`abaqus_worker/export_history.py`、future M4 extraction、`work/diagnostic_stress_strain_5cases_20260916/fig1_regions.json`（本地证据）。
+- Re-reconciliation（2026-09-18，第三方审查复核后**确认为仍活跃**，不是已完成项）：
+  - 重复请求的**来源仍在当前默认配置里**：`config/simulation.json` 同时有 `history_frequency=1`（显式 energy/node 请求继承）与 `preselect_history_frequency=10`（PRESELECT 组），同一批整体能量量仍会以两种频率写入 ODB。
+  - 频率继承机制已在 `pipeline/build.py::render_outputs` docstring 文档化（含"显式频率会改变冻结 deck 字节，必须先真实 Data Check 验证"）。
+  - extraction 层现在由 `abaqus_worker/export_history.py::_series` 以 **exact → plain → loose** 偏好选 key，并把选中 key 记入 raw 文档的 `chosen_keys`。该启发式已写进 worker docstring（不再是"未记录"），但它**仍是字符串命名启发式**，不等于本条目要求的 inventory + 明确 extraction policy：5 点 Recommendation（inventory、逐条记录 point count / time range / density、policy 选定、report 记录理由、禁止后缀推断）**均未实现**。
+  - `config/outputs.example.json` 已删除，现行输出请求在 `config/simulation.json` 的 `output.requests`。相关文件已重写为：`config/simulation.json`、`pipeline/build.py`、`abaqus_worker/export_history.py`、`pipeline/extract.py`。
 
 ### RB-024 — M4 需要 versioned canonical extraction schema（RAW → normalization → QA）
 
 - 日期：2026-09-16；来源：DeepSeek independent review + ChatGPT secondary review（D2，2026-09-16）
-- 优先级：HIGH；状态：**ACCEPTED**（M4 data contract，尚未实现）；类别：M4 data contract
+- 优先级：HIGH；状态：**RESOLVED**（2026-09-17/18，核心闭环；schema version 载体未单独实现）；类别：M4 data contract
 - **Observed Fact**：`pipeline/curve_qa.py` 要求列为 `time_s / u3_mm / rf3_N / ALLKE / ALLIE / ALLAE`；而唯一已存在的 ad-hoc 诊断 CSV（`work/diagnostic_stress_strain_5cases_20260916/*.csv`）使用另一套列名（`time / U3_mm / RF3_N / engineering_strain / engineering_stress_MPa`）**且没有 energy 列**；`curve_qa.TARGETS` 又固定到 `0.300`。因此现有 QA 入口无法消费现有真实数据（`HISTORY_MISSING`）。
 - **区分**：本条目**不重复 RB-011**。RB-011 负责"TARGETS / target strain 配置化"；本条目负责"**formal extraction ↔ normalization ↔ QA 的唯一数据 schema**"。
 - **Decision（架构原则；本轮 DO NOT IMPLEMENT）**：M4 开始时应先定义 **versioned canonical schema**，分层为
@@ -449,15 +467,21 @@ REVIEW_BACKLOG 默认不读。
   - **QA**：只消费 versioned canonical schema。
 - 本轮：**DO NOT IMPLEMENT**（未修改 `curve_qa.py`、未写 extraction pipeline、未改 CSV 契约）。
 - 相关文件：`pipeline/curve_qa.py`、`run.py`（`qa-history`）、`abaqus_worker/export_history.py`、`config/quality.example.json`。
+- 解决记录（2026-09-18 re-reconciliation）：Observed Fact 中的三处断裂已全部闭合——
+  - `pipeline/extract.py` 产出 canonical 三件套，`history.csv` 列名即 normalization schema：`time_s`、`u3_mm`、`rf3_N` + 实际存在的 energy 列；缺失变量不补 0，在 summary 的 `missing` 里列出；
+  - RAW 层 = `results/raw_history.json`（保留 native time axes、原始 region/key、`chosen_keys`，不做删改）；
+  - QA 只消费 canonical schema：`pipeline/curve_qa.py::read_history_csv` / `record_curve_qa`，并已接入 `run_case` extract 阶段（`runtime.results.curve_qa_policy` 配置时写 `results/curve_qa.json`）；`qa-history` 复用同一 reader，对流水线自身输出可直接运行（实测冒烟通过）。
+  - 未尽事项：RAW→Normalization→QA 的 **schema version 载体**（versioned 声明字段）未单独实现，如未来 schema 演进需补。相关文件追加：`pipeline/run_case.py`、`tests/test_curve_qa.py`。
 
 ### RB-025 — M4 extraction context / PBC provenance
 
 - 日期：2026-09-16；来源：DeepSeek independent review + ChatGPT secondary review（D3，2026-09-16）
-- 优先级：MEDIUM；状态：**ACCEPTED**（M4 provenance 设计输入，尚未实现）；类别：M4 provenance / PBC QA
+- 优先级：MEDIUM；状态：**RESOLVED**（2026-09-17 重构使 context 天然可溯源）；类别：M4 provenance / PBC QA
 - **Observed Fact**：M2/M3 attempt 的 staging 集合只含 deck + 9 个 include + provenance JSON（`pipeline/physical_datacheck.py` / `pipeline/physical_solve.py` 的 `_STAGED_DECK_FILES` / `_PROVENANCE_FILES`），**不含** `ingredients/pbc_map.json`、`ingredients/model_inputs.json`（实测 `work/fig1_solve_m3_20pct_003/ingredients/` 仅 `shell_mesh.inc` + `lateral_pbc.inc`）。若未来 PBC residual QA 需要 (dependent, root, shift) 映射，目前只能重新解析 1722 条 `*Equation` 文本，或回退到 build attempt / 外部 mesh bundle。
 - **Decision（本轮不施工）**：未来 M4 应定义 **extraction context**，至少可追溯：`solve_report`、`model_manifest`、`pbc_map`、`model_inputs` / geometry normalization、output profile identity、ODB，以及上述对象的 **SHA256**。**不要**通过重新解析 `*Equation` 文本来恢复拓扑。
 - 本轮：**不修改任何 staging 列表**（未改 `physical_datacheck.py` / `physical_solve.py`）。
 - 相关文件：`pipeline/physical_datacheck.py`、`pipeline/physical_solve.py`、`pipeline/prepare_fe.py`（`pbc_map.json` 产出方）、future M4 extraction。
+- 解决记录（2026-09-18 re-reconciliation）：staging 本身已在 2026-09-17 重构中废除——deck、`ingredients/pbc_map.json`、报告与 ODB 同在一个 `work/<case_id>/abaqus/` 目录，不再有"staging 集合缺项"问题；`pbc_map.json` 的 SHA256 记录在 `build_report.json` 的 `deck.provenance`，extract 经同一目录的 build_report 取模型事实（且 extract 已接 deck SHA 链）。"重新解析 `*Equation` 文本恢复拓扑"的场景不再存在。相关文件已重写为：`pipeline/build.py`、`pipeline/run_case.py`、`pipeline/extract.py`。
 
 ### RB-026 — 大批量 artifact retention / storage policy 必须先定义
 
@@ -477,20 +501,22 @@ REVIEW_BACKLOG 默认不读。
 ### RB-027 — M2 completion marker 来源（stdout vs .dat）与大小写策略不一致
 
 - 日期：2026-09-16；来源：DeepSeek independent review + ChatGPT secondary review（D4，2026-09-16）
-- 优先级：LOW/MEDIUM；状态：**DEFERRED**；类别：pipeline robustness / runtime portability
+- 优先级：LOW/MEDIUM；状态：**RESOLVED**（2026-09-17 重构）；类别：pipeline robustness / runtime portability
 - **Observed Fact**：`pipeline/physical_datacheck.py` 的 `datacheck_complete_evidence` 只在 `log_text + dat_text`（已小写化）中查找 marker，**不解析 stdout capture**；而 `docs/TROUBLESHOOTING.md` 明确记载"Abaqus 2026 datacheck interactive 不写 `.log`，stdout 承担 log 角色"。`pipeline/physical_solve.py` 对 `.sta` 的 marker 检查则是**区分大小写**的精确匹配。当前真实 baseline 正常：`work/fig1_datacheck_m2_final_001/fig1_m2_datacheck.dat` 第 465 行确实含 `ANALYSIS DATACHECK COMPLETE`（2026-09-16 只读核对）。
 - **Inference**：潜在风险是**跨版本/跨运行模式的 false negative**（marker 只出现在 stdout 时会被判 `DATACHECK_FAILED`），**不是 false PASS**；现有 mock 测试把 marker 写进 `.dat`，无法发现该差异。
 - **Recommendation**：M7 或 M4 顺带处理（改为"`.dat` 或 stdout capture 命中"并统一大小写策略）。**本轮不改代码、不加测试。**
 - 相关文件：`pipeline/physical_datacheck.py`、`pipeline/physical_solve.py`、`tests/test_core.py`、`docs/TROUBLESHOOTING.md`。
+- 解决记录（2026-09-18 re-reconciliation）：重构后的 `pipeline/abaqus.py`（约 577-585 行）把 log、`.dat` 与 stdout capture **合并小写后**统一查找完成标记，并按 solver 区分 token（Standard：`analysis datacheck complete`；Explicit：`the analysis has completed successfully`，2026 版实测）； Recommendations 的两条（stdout 纳入 + 统一大小写）均已实现。相关文件已重写为：`pipeline/abaqus.py`、`tests/test_abaqus.py`、`docs/TROUBLESHOOTING.md`。
 
 ### RB-028 — include 清单与诊断解析逻辑多处重复（单一真值缺位）
 
 - 日期：2026-09-16；来源：DeepSeek independent review（D6，2026-09-16）
-- 优先级：LOW；状态：**DEFERRED**；类别：maintainability / duplicated source of truth
+- 优先级：LOW；状态：**RESOLVED**（2026-09-17 重构）；类别：maintainability / duplicated source of truth
 - **Observed Fact**：同一 include 顺序/清单在 `pipeline/physical_builder.py`（`_STATIC_INCLUDE_ORDER`）、`pipeline/physical_datacheck.py`、`pipeline/physical_solve.py`（各一份 `_STAGED_DECK_FILES`）中出现三处；诊断扫描/策略解析逻辑在 datacheck 与 solve 两模块间复制（`_scan_diagnostic_file`、`_resolve_execution_policy` 等）。
 - **Inference**：未来新增 block 时需改多处；若 staging 清单漏项，失败发生在真实 Abaqus 启动之后（fail-safe，但反馈环变长）；解析逻辑分叉可能导致两个 stage 对同一段 Abaqus 文本给出不同结论。
 - **Recommendation**：M4/M5 阶段在**有真实回归**的前提下收敛为单一真值并上移公共解析函数。**本轮不重构。**
 - 相关文件：`pipeline/physical_builder.py`、`pipeline/physical_datacheck.py`、`pipeline/physical_solve.py`、`pipeline/diagnostics.py`。
+- 解决记录（2026-09-18 re-reconciliation）：重构后两个"单一真值"均成立——include 顺序只有 `pipeline/build.py::INCLUDE_ORDER` 一处定义（`pipeline/abaqus.py` 直接 import 使用）；诊断解析只有 `pipeline/abaqus.py::parse_diagnostics` 一个实现（datacheck / solve / mesh datacheck 三处调用），不再有分叉风险。相关文件已重写为：`pipeline/build.py`、`pipeline/abaqus.py`。
 
 ### RB-029 — 仓库尚无 License
 
@@ -503,10 +529,11 @@ REVIEW_BACKLOG 默认不读。
 ### RB-030 — 公开仓库缺 baseline fingerprints（并明确 ODB SHA 的语义边界）
 
 - 日期：2026-09-16；来源：DeepSeek independent review + ChatGPT secondary review（D7，2026-09-16）
-- 优先级：MEDIUM；状态：**DEFERRED**；类别：reproducibility / public repository
+- 优先级：MEDIUM；状态：**RESOLVED**（2026-09-17）；类别：reproducibility / public repository
 - **Observed Fact**：tracked `docs/LOCAL_EVIDENCE.json` 已记录 Fig.1 clean bundle 的**输入**指纹（`fig1_shell.npz` `ef919779…`、report `047268c9…`，与 M3 manifest 的 `mesh_source_hashes` 一致）；tracked `config/physics.fig1_20pct_validation.json` 与 M3 实配逐字节相同（`9340898E…`）。但**没有任何 tracked 文件**记录 M3 accepted 产物的身份：`model_key` / `scaffold_key` / `build_key` / `physical.inp` SHA / expected completion status（`git grep` 无命中，仅存在于 git-ignored `work/`）。
 - **Recommendation（未来 tracked，可含 `model_key`、`build_key`、`physical.inp` SHA、相关 config SHA、mesh source hashes、Abaqus release、target strain、expected completion status）**：
   - **重要边界**：ODB SHA 只能表示"这个具体 artifact 的身份"，**不得**把"别人重算出的 ODB SHA 必须一样"当作科学复现通过标准。
 - 本轮：**不创建 `BASELINE_FINGERPRINTS` 文件**（只登记意见）。
 - 相关文件：`docs/LOCAL_EVIDENCE.json`、`README.md`、`docs/PROJECT_STATUS.md`、`work/fig1_solve_m3_20pct_003/`（本地证据）。
+- 解决记录（2026-09-18 re-reconciliation）：tracked **`tests/fixtures/fig1_20pct_regression/deck_sha256.json`** 记录 Fig.1 20% case 的 10 个 deck 文件 SHA256、mesh source hashes（npz/pairs 逐字节、report 走契约校验）、config 指向与来源 attempt；`tests/test_regression.py` 用 tracked config 重建 deck 后逐字节比对。文件内明确声明 "Artifact identity only: NOT a claim that Abaqus acceptance or the solution is reproducible"，与本条目的 ODB SHA 语义边界一致。相关文件已重写为：`tests/fixtures/fig1_20pct_regression/deck_sha256.json`、`tests/test_regression.py`。
 

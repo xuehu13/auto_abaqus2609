@@ -51,7 +51,7 @@ _ABAQUS_KEYS = ("launcher", "release_required")
 _CGAL_KEYS = ("executable",)
 #: Disk policy, not a scientific parameter: dropping a solved ODB is allowed only
 #: after extraction succeeded, and never for a failed case.
-_RESULTS_KEYS = ("keep_odb",)
+_RESULTS_KEYS = ("keep_odb", "curve_qa_policy")
 _STAGE_KEYS = ("cpus", "standard_parallel", "mp_mode", "timeout_s")
 
 # --- Abaqus stays an EXTERNAL runtime ---------------------------------------
