@@ -487,7 +487,10 @@ def _run_launcher(argv, cwd, timeout_s, stdout_path, stderr_path):
     cannot be fully terminated, a fatal ``ABAQUS_TREE_NOT_TERMINATED`` stops the
     batch instead of allowing overlapping Abaqus jobs.
     """
-    case_key = (str(cwd), _job_name_of(argv))
+    # Absolute on purpose: the solver's own command line carries the RESOLVED deck
+    # dir (-indir/-outdir), so a relative --work-root would blind the sweep and,
+    # worse, let verification "confirm" a clean tree it cannot actually see.
+    case_key = (str(Path(cwd).resolve()), _job_name_of(argv))
     job = _job_create()
     try:
         with open(stdout_path, "wb") as out_stream, open(stderr_path, "wb") as err_stream:
@@ -502,10 +505,11 @@ def _run_launcher(argv, cwd, timeout_s, stdout_path, stderr_path):
                     raise PipelineError(
                         "ABAQUS_TREE_NOT_TERMINATED",
                         "Case process tree did not terminate after the %ss wall limit; "
-                        "still running (matched by case directory/job name): %s. No new "
+                        "still running / unverifiable (matched by case directory/job "
+                        "name; %d = the process enumeration itself failed): %s. No new "
                         "Abaqus job may start; clear these processes, then re-run. "
                         "Evidence files are kept: %s"
-                        % (timeout_s, survivors, cwd), fatal=True) from None
+                        % (timeout_s, _ENUMERATION_FAILED, survivors, cwd), fatal=True) from None
                 raise
     finally:
         _job_close(job)
@@ -523,6 +527,9 @@ def _run_launcher(argv, cwd, timeout_s, stdout_path, stderr_path):
 
 _TREE_GRACE_S = 60.0
 _TREE_POLL_INTERVAL_S = 2.0
+#: Survivor sentinel meaning "the process enumeration itself failed" — unverifiable
+#: is treated as NOT safe to continue, never as a clean tree.
+_ENUMERATION_FAILED = -1
 _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
 _JobObjectExtendedLimitInformation = 9
 
@@ -629,14 +636,20 @@ def _job_name_of(argv):
 
 
 def _system_processes():
-    """(pid, ppid, command line lowercased) of every process, backslashes normalized."""
+    """(pid, ppid, command line lowercased) of every process, backslashes normalized.
+
+    Returns ``None`` when the enumeration itself fails: "cannot see any process"
+    must never be confused with "confirmed no process" — an unverifiable state
+    keeps the caller in the fatal branch instead of continuing the batch."""
     script = ("Get-CimInstance Win32_Process | ForEach-Object "
               "{ \"{0}`t{1}`t{2}\" -f $_.ProcessId, $_.ParentProcessId, $_.CommandLine }")
     try:
         completed = subprocess.run(["powershell", "-NoProfile", "-Command", script],
                                    capture_output=True, text=True, timeout=120)
     except (OSError, subprocess.SubprocessError):
-        return []
+        return None
+    if completed.returncode != 0:
+        return None
     rows = []
     for line in completed.stdout.splitlines():
         parts = line.split("\t", 2)
@@ -675,18 +688,31 @@ def _terminate_pid(pid):
 def _terminate_case_tree(case_key, proc, job, grace_s=None):
     """Terminate the whole case tree and verify nothing is left. Returns the list
     of surviving PIDs (empty = safe to continue). Never deletes any file: the
-    .sta/.msg/.dat/partial ODB of a timed-out attempt are diagnostics."""
+    .sta/.msg/.dat/partial ODB of a timed-out attempt are diagnostics.
+
+    Survivors are re-killed on every poll; only if the tree is still alive (or the
+    process enumeration itself keeps failing — unverifiable is not "clean") when
+    the grace period ends is the fatal path taken."""
     grace_s = _TREE_GRACE_S if grace_s is None else grace_s
     _job_terminate(job)              # OS-level: every descendant inside the job
     _terminate_pid(proc.pid)         # belt and braces (also covers a failed attach)
-    for pid in _case_pids(_system_processes(), case_key):
+    sweep = _system_processes()
+    for pid in (_case_pids(sweep, case_key) if sweep is not None else []):
         _terminate_pid(pid)          # sweep breakaways / later spawns of THIS case
     deadline = time.monotonic() + grace_s
     while True:
-        alive = _case_pids(_system_processes(), case_key)
+        rows = _system_processes()
+        if rows is None:
+            if time.monotonic() >= deadline:
+                return [_ENUMERATION_FAILED]
+            time.sleep(_TREE_POLL_INTERVAL_S)
+            continue
+        alive = _case_pids(rows, case_key)
         if not alive:
             proc.poll()
             return []
+        for pid in alive:
+            _terminate_pid(pid)      # keep trying within the grace window
         if time.monotonic() >= deadline:
             return alive
         time.sleep(_TREE_POLL_INTERVAL_S)

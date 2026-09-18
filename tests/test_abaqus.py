@@ -711,6 +711,26 @@ class LauncherTimeoutTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, "ABAQUS_TREE_NOT_TERMINATED")
         self.assertTrue(caught.exception.fatal,
                         "an unterminated tree must stop the batch, not be swallowed")
+        self.assertEqual(caught.exception.__cause__, None)
+
+    def test_survivors_are_rekilled_during_the_verification_window(self):
+        solver_row = (99, 1, "standard.exe -indir %s" % str(self.deck_dir).lower())
+        patches = self._fake_world([[solver_row], [solver_row], []])
+        with self.assertRaises(subprocess.TimeoutExpired):
+            self._launch(self.FakeProc(), patches)
+        self.assertGreaterEqual(self.kills.count(99), 2,
+                                "a survivor seen in verification must be killed again")
+
+    def test_a_failing_enumeration_is_never_treated_as_a_clean_tree(self):
+        """PowerShell failing mid-verification must NOT read as "no processes left":
+        unverifiable keeps polling and ends in the fatal branch, never in a pass."""
+        patches = self._fake_world([[(99, 1, "standard.exe -indir %s"
+                                      % str(self.deck_dir).lower())], None, None, None])
+        with self.assertRaises(PipelineError) as caught:
+            self._launch(self.FakeProc(), patches)
+        self.assertEqual(caught.exception.code, "ABAQUS_TREE_NOT_TERMINATED")
+        self.assertTrue(caught.exception.fatal)
+        self.assertIn("enumeration itself failed", caught.exception.args[0])
 
     def test_a_clean_exit_never_touches_any_process(self):
         patches = self._fake_world([[]])
