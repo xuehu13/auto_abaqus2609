@@ -16,10 +16,18 @@ import tempfile
 
 
 class PipelineError(RuntimeError):
-    """Fatal pipeline error with a stable machine-readable code."""
+    """Fatal pipeline error with a stable machine-readable code.
 
-    def __init__(self, code: str, message: str):
+    ``fatal=True`` marks global failures a batch must not swallow: instead of
+    recording the case and moving on, the whole batch stops. Used when the Abaqus
+    process tree of a timed-out case could not be terminated — starting another
+    Abaqus job while that case's solver still runs would overlap CPU/memory/
+    licenses.
+    """
+
+    def __init__(self, code: str, message: str, fatal: bool = False):
         self.code = code
+        self.fatal = bool(fatal)
         super().__init__(message)
 
 

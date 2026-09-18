@@ -303,12 +303,21 @@ def _now():
 
 
 def run_case_safe(case, simulation_path, *, work_root, runtime_path, force=False, cpus=None,
-                  timeout_s=None, abaqus_command=None, attempts=1):
+                  timeout_s=None, abaqus_command=None, attempts=1, stop_event=None):
     """Run one case with optional identical-input retries; never raises case failures.
 
     Retries re-run the SAME config: run_case resumes from the stage that failed, so no
-    scientific parameter is ever changed to make a case succeed.
+    scientific parameter is ever changed to make a case succeed. Fatal errors (the
+    Abaqus process tree of a timed-out case survived termination) are never retried
+    and never swallowed: they must stop the whole batch. ``stop_event`` is set by the
+    batch driver after a fatal error, so cases still queued in a worker pool are
+    skipped instead of being started.
     """
+    if stop_event is not None and stop_event.is_set():
+        raise PipelineError("BATCH_STOPPED_BY_FATAL_ERROR",
+                            "Not started: a previous case's Abaqus process tree survived "
+                            "termination, so the batch stopped before this case.",
+                            fatal=True)
     error = None
     for _attempt in range(1, max(1, attempts) + 1):
         try:
@@ -319,6 +328,13 @@ def run_case_safe(case, simulation_path, *, work_root, runtime_path, force=False
             error = None
             break
         except (PipelineError, OSError) as exc:
+            if getattr(exc, "fatal", False):
+                # Set the stop flag HERE, in the worker, before returning: the pool
+                # would otherwise pick up the next queued case before the driver
+                # even sees the fatal error.
+                if stop_event is not None:
+                    stop_event.set()
+                raise
             error = exc
     return error
 
@@ -375,6 +391,8 @@ def run_batch(cases_path=None, simulation_path=None, *, defaults_path=None, work
 
     publish()
     interrupted, finished = False, 0
+    fatal_error = None
+    stop_event = threading.Event()
     if todo:
         pool = ThreadPoolExecutor(max_workers=workers)
         jobs = {}
@@ -383,10 +401,31 @@ def run_batch(cases_path=None, simulation_path=None, *, defaults_path=None, work
                 jobs[pool.submit(run_case_safe, case, simulation_path, work_root=batch_dir,
                                  runtime_path=runtime_path, force=force, cpus=cpus,
                                  timeout_s=timeout_s, abaqus_command=abaqus_command,
-                                 attempts=1 + max(0, max_retries))] = case
+                                 attempts=1 + max(0, max_retries), stop_event=stop_event)] = case
             for future in as_completed(jobs):
                 case = jobs[future]
-                error = future.result()
+                try:
+                    error = future.result()
+                except PipelineError as exc:
+                    if not getattr(exc, "fatal", False):
+                        raise
+                    # The Abaqus process tree of this case survived termination: no
+                    # new Abaqus job may start. Queued cases see the stop event;
+                    # the case that is already running is allowed to finish
+                    # (pool shutdown below). Then record what we have and stop.
+                    fatal_error = exc
+                    stop_event.set()
+                    row = _summary_row(case, case_state(batch_dir / case["case_id"]),
+                                       batch_dir / case["case_id"])
+                    rows_by_id[case["case_id"]] = row
+                    finished += 1
+                    log("FATAL: %s" % str(exc).splitlines()[0])
+                    log("batch stopped: waiting for running cases only; no new Abaqus "
+                        "job will start until the process tree is gone")
+                    for pending in jobs:
+                        pending.cancel()
+                    publish()
+                    break
                 row = _summary_row(case, case_state(batch_dir / case["case_id"]),
                                    batch_dir / case["case_id"])
                 rows_by_id[case["case_id"]] = row
@@ -427,6 +466,8 @@ def run_batch(cases_path=None, simulation_path=None, *, defaults_path=None, work
     log("DONE=%d  FAILED=%d  REMAINING=%d%s"
         % (totals["DONE"], totals["FAILED"], totals["REMAINING"],
            "  (interrupted by user)" if interrupted else ""))
+    if fatal_error is not None:
+        raise fatal_error
     return {"batch_dir": str(batch_dir), "cases": len(cases), "interrupted": interrupted,
             "summary_csv": str(batch_dir / "batch_summary.csv"), "rows": rows, **totals}
 

@@ -8,6 +8,7 @@ produce.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -639,6 +640,105 @@ class StaParserTests(unittest.TestCase):
         self.assertEqual(info, {"sta_exists": False, "increment_count": 0, "last_step": None,
                                 "last_increment": None, "last_step_time": None,
                                 "sta_completion": False})
+
+
+class LauncherTimeoutTests(unittest.TestCase):
+    """A wall-limit expiry must end the case's WHOLE Abaqus tree and verify that it
+    is gone before the call returns; a tree that refuses to die must stop the batch
+    with a fatal error (RB-014, confirmed on real stalled standard.exe orphans)."""
+
+    class FakeProc:
+        """Popen stand-in without a real handle (job attach degrades to sweep-only)."""
+        pid = 4711
+
+        def __init__(self, returncode=None):
+            self.returncode = returncode
+
+        def wait(self, timeout=None):
+            if self.returncode is None:
+                raise subprocess.TimeoutExpired("launcher", timeout)
+            return self.returncode
+
+        def poll(self):
+            return self.returncode
+
+    def setUp(self):
+        self.folder = tempfile.TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+        self.deck_dir = Path(self.folder.name) / "abaqus"
+        self.deck_dir.mkdir()
+        self.kills = []
+
+    def _fake_world(self, sequences):
+        """Patch process enumeration (per call) and PID termination with fakes."""
+        state = {"enumerate": 0}
+
+        def processes():
+            rows = sequences[min(state["enumerate"], len(sequences) - 1)]
+            state["enumerate"] += 1
+            return rows
+
+        def terminate(pid):
+            self.kills.append(pid)
+            return True
+
+        return (mock.patch.object(abaqus, "_system_processes", processes),
+                mock.patch.object(abaqus, "_terminate_pid", terminate),
+                mock.patch.object(abaqus, "_TREE_POLL_INTERVAL_S", 0.0),
+                mock.patch.object(abaqus, "_TREE_GRACE_S", 0.2))
+
+    def _launch(self, proc, patches):
+        with mock.patch.object(abaqus.subprocess, "Popen", lambda *a, **k: proc):
+            with patches[0], patches[1], patches[2], patches[3]:
+                return abaqus._run_launcher(["launcher.bat", "job=mini_solve"], self.deck_dir,
+                                            0.05, self.deck_dir / "o.txt",
+                                            self.deck_dir / "e.txt")
+
+    def test_timeout_kills_the_tree_and_verifies_before_returning(self):
+        deck = str(self.deck_dir).lower()
+        solver_row = (99, 1, "standard.exe -indir %s -outdir %s -job mini_solve" % (deck, deck))
+        patches = self._fake_world([[solver_row], []])
+        with self.assertRaises(subprocess.TimeoutExpired):
+            self._launch(self.FakeProc(), patches)
+        self.assertEqual(sorted(self.kills), [99, 4711],
+                         "the root launcher AND the matched solver PID must be terminated")
+
+    def test_surviving_tree_processes_stop_everything_with_a_fatal_error(self):
+        solver_row = (99, 1, "standard.exe -indir %s" % str(self.deck_dir).lower())
+        patches = self._fake_world([[solver_row]])
+        with self.assertRaises(PipelineError) as caught:
+            self._launch(self.FakeProc(), patches)
+        self.assertEqual(caught.exception.code, "ABAQUS_TREE_NOT_TERMINATED")
+        self.assertTrue(caught.exception.fatal,
+                        "an unterminated tree must stop the batch, not be swallowed")
+
+    def test_a_clean_exit_never_touches_any_process(self):
+        patches = self._fake_world([[]])
+        code = self._launch(self.FakeProc(returncode=0), patches)
+        self.assertEqual(code, 0)
+        self.assertEqual(self.kills, [])
+
+
+class CasePidMatchingTests(unittest.TestCase):
+    """Identification is by THIS case's deck dir / job name only: never the
+    controller itself, never another case's solver."""
+
+    def test_only_this_case_matches(self):
+        mine = os.getpid()
+        deck = r"F:\repo\work\batch\caseA\abaqus"
+        other = r"F:\repo\work\batch\caseB\abaqus"
+        rows = [(100, 1, "standard.exe -indir %s -outdir %s" % (deck.lower(), deck.lower())),
+                (101, 1, "standard.exe -indir %s" % other.lower()),
+                (102, 1, "e:/abaqus/abaqus.bat job=caseA_solve interactive"),
+                (mine, 1, "python -B run.py run-case --work-root f:\\repo\\work\\batch"),
+                (103, 1, "explorer.exe")]
+        pids = abaqus._case_pids(rows, (deck, "caseA_solve"))
+        self.assertEqual(sorted(pids), [100, 102])
+        self.assertNotIn(mine, pids, "the controller must never match its own command line")
+
+    def test_mixed_separators_and_case_are_normalized(self):
+        rows = [(100, 1, "standard.exe -indir f:/repo/work/caseA/abaqus")]
+        self.assertEqual(abaqus._case_pids(rows, (r"F:\REPO\work\caseA\abaqus", "")), [100])
 
 
 if __name__ == "__main__":

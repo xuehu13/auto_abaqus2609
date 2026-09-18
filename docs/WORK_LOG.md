@@ -190,3 +190,65 @@ T=0.01s），共 12 个 run；单例失败或 >30 min 未成功就停止并计�
 ### 关联提交
 
 - 本次提交（实验配置/驱动/文档 + 本日志首两节）；前置代码提交 `31ffc12`（同日上午）。
+
+---
+
+## 003 — 2026-09-18 20:02 — Abaqus 超时进程树强制终止 + 确认机制（RB-014 kill-tree 缺口闭合）
+
+### 背景与需求
+
+条目 002 的实验实证了 kill-tree 缺口：solve 墙钟超时只杀 launcher，orphan `standard.exe`
+继续占 8 线程 + license。用户据此提出五点硬性要求：① 超时必须强制终止该 case 的**整个**
+Abaqus 进程树（launcher、standard.exe 及相关子进程）；② 终止后**不得立即**启动下一个
+case，先确认该 case 相关进程全部退出；③ 终止必须基于当前 case 的具体进程/PID，禁止
+`taskkill /IM` 之类的镜像名杀法；④ 已有的 .sta/.msg/.dat/partial ODB 全部保留；
+⑤ 树杀不干净就停止 batch 并明确报错，清干净后才允许继续。
+
+### 实现（`pipeline/abaqus.py`，三层递进）
+
+1. **Windows Job Object（首选，OS 级保证）**：launcher 启动时通过 `AssignProcessToJobObject`
+   把它放进一个 `KILL_ON_JOB_CLOSE` 的 Job——之后 Abaqus 自己 spawn 的所有后代
+   （standard.exe、DAE/packager、mpi）自动继承成员身份，超时一次 `TerminateJobObject`
+   全部结束。实现细节：这台 Windows 内核对 class 9 的结构体长度期望是 **144 字节**
+   （BASIC 无 IoInfo 的老式布局）而非头文件的 192，代码按 `[192, 144]` 双尺寸探测，
+   尺寸不对只会干净地报 ERROR_BAD_LENGTH，不会半写。
+2. **PID 定向兜底**：root launcher 一律 `taskkill /F /T /PID <pid>`（带 /T 连带其子树）；
+   再按**本 case 的 deck 目录 + job 名**在进程命令行里精确匹配（`_case_pids`，小写化、
+   分隔符归一、**显式排除控制器自身 PID**），逐 PID 清理逃逸/晚生成的进程。全程没有
+   任何按镜像名的杀法。
+3. **确认等待**：终止后轮询进程枚举（PowerShell `Get-CimInstance`，2s 间隔，60s 宽限），
+   直到本 case 匹配进程清零才返回——batch 天然被阻塞在这道确认上，不会带着残留进程
+   进入下一个 case。
+   - 宽限期内清零 → 照常把 `TimeoutExpired` 抛回给 stage 层（`DATACHECK_TIMEOUT` /
+     `SOLVE_TIMEOUT` 消息不变，证据目录保留语义不变）。
+   - 宽限期满仍有幸存者 → 抛**新的致命错误** `ABAQUS_TREE_NOT_TERMINATED`。
+
+**batch 停止机制**（`pipeline/batch.py`）：`PipelineError` 增加 `fatal` 标志。
+`run_case_safe` 在捕获 fatal 的**worker 线程内**立刻 set 共享 `stop_event` 再抛出
+（否则线程池会在主线程处理 fatal 之前就把下一个排队的 case 启动起来——单测抓到过这个
+竞态）；已排队的 case 看到 stop_event 直接跳过不启动；已在上跑的 case 允许跑完
+（与 KeyboardInterrupt 的既有哲学一致）；batch 仍写出汇总三件套后把 fatal 向上抛，
+CLI 以非零码明确报错。fatal 一律不重试。
+
+### 测试
+
+- 新增 6 个单测：超时杀树并验证后才返回（root+匹配 PID 都被终止）；幸存者 → fatal
+  `ABAQUS_TREE_NOT_TERMINATED`；正常退出完全不碰进程；PID 匹配只命中本 case
+  （不误伤其他 case、不匹配控制器自身命令行）；混合分隔符/大小写归一；batch fatal
+  停止（case_C 不启动、汇总仍写出、异常向上抛）。
+- `pixi run test` → **core 171 OK（165 + 新 6）+ boundary 5 OK**。
+- **真实 Abaqus 验证**（scratch 目录 `work/killtree_selftest/`，fig1 全流程）：
+  1. `datacheck.timeout_s=15` 强制超时：mesh_datacheck 15s 到点 → 真实 Job terminate +
+     taskkill + 真实进程枚举确认 → `DATACHECK_TIMEOUT`，部分产物（.dat/.023/.cax/.com
+     等）全部保留，进程清零（唯一残存的 ABQcaeK 是测试前就存在的无 job 共享守护进程，
+     匹配器正确地没有碰它——守护进程不是 case 进程）。
+  2. 正常路径：同目录重跑 mesh datacheck 至完成 → `PASSED` / return_code 0，证明
+     Popen 化改造后的正常分支无回归。
+- **观察（未修，登记用）**：被超时终止的 meshcheck 目录若直接重跑，vendor 阶段 07 会
+  按"已有产物"幂等校验那份不完整的 .dat → 永远 FAIL；需要把该目录挪走（保留证据）才
+  能重新跑。这属于 resume/reconciliation 语义（RB-014 剩余部分），不是本次改动引入的。
+
+### 关联提交
+
+- 本次提交（abaqus.py 进程树控制、batch fatal 语义、6 个新测试、文档同步；
+  前置提交 `31ffc12`、`a710334`）。

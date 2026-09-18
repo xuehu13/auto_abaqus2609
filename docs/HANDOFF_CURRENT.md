@@ -141,3 +141,22 @@ plugin/backend 体系、DAG engine、数据库、worker daemon；不要在 retry
 - 流程实证：implicit 墙钟超时杀 launcher 后 **orphan standard.exe 存活**（占 8 线程 +
   license，已按 PID 手工清理）——RB-014 的 kill-tree 缺口在真实实验中复现。
 - 时间线、逐例数字与偏差处置（solve 上限 1500s→1800s）详见 WORK_LOG 条目 002。
+
+## 10. 2026-09-18：Abaqus 超时进程树强制终止 + 确认机制（RB-014 kill-tree 闭合）
+
+第 9 节实验实证 orphan 缺口后，应用户五点要求实现（详细记录见 WORK_LOG 条目 003）：
+
+- **墙钟超时 = 终止整个 case 进程树**：Windows Job Object（launcher 及全部后代入
+  job，一次 TerminateJobObject 全灭；144/192 双尺寸探测适配不同内核布局）+ root/匹配
+  PID 的 `taskkill /F /T`。识别键 = 本 case 的 deck 目录 + job 名（进程命令行匹配，
+  排除控制器自身），**绝无镜像名杀法**。
+- **确认后才放行**：终止后轮询进程枚举（2s 间隔 / 60s 宽限）确认本 case 进程清零，
+  batch 才会进入下一个 case。
+- **清不干净 = batch 停止**：新致命错误 `ABAQUS_TREE_NOT_TERMINATED`
+  （`PipelineError.fatal`）——worker 内立即置 stop 事件、排队 case 全部跳过、
+  在跑 case 跑完、汇总照写、异常向上抛非零退出。fatal 不重试。
+- **证据保留**：.sta/.msg/.dat/partial ODB 一律不删。
+- 验证：真实 Abaqus 15s 强制超时触发终止+确认+证据保留（`work/killtree_selftest/`）；
+  正常完成路径同步回归；`pixi run test` → core 171 OK + boundary 5 OK。
+- 已知残留（DEFERRED）：watchdog、外部杀进程后的 reconciliation、mesh_datacheck 超时
+  残留产物使 vendor 07 幂等校验恒 FAIL 的 resume 语义（详见 RB-014 解决记录）。

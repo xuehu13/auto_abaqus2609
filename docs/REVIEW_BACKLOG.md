@@ -350,6 +350,17 @@ REVIEW_BACKLOG 默认不读。
   各占 8 线程 + license，需手工按 PID 清理；绝不能按镜像名杀）；ref30_05 的 orphan 则跑完了
   分析（其 ODB 因此得以恢复提取）。同时证明 orphan 完成时 `.sta`/ODB 仍可写——超时后的
   reconciliation（"RUNNING/TIMEOUT 但分析实际完成"）是 M7 设计的真实输入场景。状态维持 DEFERRED。
+- 解决记录（2026-09-18，**部分闭合：kill-tree + 确认**）：应用户五点要求实现——① 墙钟超时
+  经 Windows Job Object（`KILL_ON_JOB_CLOSE`，144/192 双尺寸探测）+ root/匹配 PID 的
+  `taskkill /F /T`（识别键 = 本 case 的 deck 目录 + job 名，显式排除控制器自身；**绝无镜像名
+  杀法**）终止整个 case 进程树；② 终止后轮询进程枚举（2s 间隔 / 60s 宽限）**确认清零**才
+  返回，batch 因此天然不会带着残留进程进入下一个 case；③ 清不干净 → 新致命错误
+  `ABAQUS_TREE_NOT_TERMINATED`（`PipelineError.fatal`）：worker 内立即置共享 stop 事件、
+  排队 case 全部跳过、batch 写完汇总后停止并明确报错；④ 证据文件一律保留。真实 Abaqus
+  验证：15s 强制超时触发终止 + 确认 + 证据保留（`work/killtree_selftest/`）；正常完成路径
+  同步回归通过；`pixi run test` core 171 + boundary 5 OK。**剩余 DEFERRED**：watchdog、
+  进程收养/外部杀进程后的 reconciliation、mesh_datacheck 超时残留产物导致 vendor 07 幂等
+  校验永远 FAIL 的 resume 语义。
 
 ### RB-015 — M4 extraction contract：step time ≠ strain；partial ODB 末点可能是 termination artifact
 

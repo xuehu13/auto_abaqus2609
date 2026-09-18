@@ -14,11 +14,13 @@ Runtime values (Abaqus launcher, cpus, standard_parallel, wall limit) come from
 never scientific inputs and never enter the deck.
 
 Scope guards: no long unattended solve is started by default behaviour, no retry,
-no watchdog, no ODB reading (that is the extraction stage), and a job is never
-judged by its return code alone.
+no watchdog (the wall limit terminates the case's process tree; it does not
+restart anything), no ODB reading (that is the extraction stage), and a job is
+never judged by its return code alone.
 """
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import os
 import re
@@ -476,12 +478,218 @@ def _run_launcher(argv, cwd, timeout_s, stdout_path, stderr_path):
 
     The child environment is sanitized so the Pixi controller's Python/DLL and
     activation variables never leak into the external Abaqus runtime.
+
+    On wall-time expiry the WHOLE case process tree is terminated before the call
+    returns (see ``_terminate_case_tree``): the launcher is the direct child, but
+    ``standard.exe`` and friends are detached descendants that would otherwise keep
+    running and hold CPU/memory/licenses while the batch starts the next case.
+    Evidence files (.sta/.msg/.dat/partial ODB) are never touched. If the tree
+    cannot be fully terminated, a fatal ``ABAQUS_TREE_NOT_TERMINATED`` stops the
+    batch instead of allowing overlapping Abaqus jobs.
     """
-    with open(stdout_path, "wb") as out_stream, open(stderr_path, "wb") as err_stream:
-        completed = subprocess.run([str(part) for part in argv], cwd=str(cwd),
-                                   stdout=out_stream, stderr=err_stream, timeout=timeout_s,
-                                   env=abaqus_env())
-    return completed.returncode
+    case_key = (str(cwd), _job_name_of(argv))
+    job = _job_create()
+    try:
+        with open(stdout_path, "wb") as out_stream, open(stderr_path, "wb") as err_stream:
+            proc = subprocess.Popen([str(part) for part in argv], cwd=str(cwd),
+                                    stdout=out_stream, stderr=err_stream, env=abaqus_env())
+            _job_attach(job, proc)
+            try:
+                returncode = proc.wait(timeout=timeout_s)
+            except subprocess.TimeoutExpired:
+                survivors = _terminate_case_tree(case_key, proc, job)
+                if survivors:
+                    raise PipelineError(
+                        "ABAQUS_TREE_NOT_TERMINATED",
+                        "Case process tree did not terminate after the %ss wall limit; "
+                        "still running (matched by case directory/job name): %s. No new "
+                        "Abaqus job may start; clear these processes, then re-run. "
+                        "Evidence files are kept: %s"
+                        % (timeout_s, survivors, cwd), fatal=True) from None
+                raise
+    finally:
+        _job_close(job)
+    return returncode
+
+
+# --- case process tree control (Windows; the RB-014 kill-tree gap) ------------
+#
+# A timeout kills the launcher process, but Abaqus's real workers (standard.exe,
+# the DAE/packager, mpirun siblings) are detached descendants: they keep the CPU,
+# memory and license AND keep writing into the case directory. Everything here is
+# scoped to ONE case: identification is by the case's own deck directory and job
+# name in the process command line (never by image name), termination is per PID,
+# and the caller may only continue once verification finds nothing left.
+
+_TREE_GRACE_S = 60.0
+_TREE_POLL_INTERVAL_S = 2.0
+_JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
+_JobObjectExtendedLimitInformation = 9
+
+
+class _IO_COUNTERS(ctypes.Structure):
+    _fields_ = [(name, ctypes.c_uint64) for name in
+                ("ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
+                 "ReadTransferCount", "WriteTransferCount", "OtherTransferCount")]
+
+
+class _JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+    _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64),
+                ("PerJobUserTimeLimit", ctypes.c_int64),
+                ("LimitFlags", ctypes.c_uint32),
+                ("MinimumWorkingSetSize", ctypes.c_size_t),
+                ("MaximumWorkingSetSize", ctypes.c_size_t),
+                ("ActiveProcessLimit", ctypes.c_uint32),
+                ("Affinity", ctypes.c_size_t),
+                ("PriorityClass", ctypes.c_uint32),
+                ("IoInfo", _IO_COUNTERS)]
+
+
+class _JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+    _fields_ = [("BasicLimitInformation", _JOBOBJECT_BASIC_LIMIT_INFORMATION),
+                ("IoInfo", _IO_COUNTERS),
+                ("ProcessMemoryLimit", ctypes.c_size_t),
+                ("JobMemoryLimit", ctypes.c_size_t),
+                ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+
+def _job_create():
+    """A kill-on-close Windows job object: every descendant the launcher spawns
+    inherits it, so one TerminateJobObject ends them all. ``None`` when unavailable
+    (non-Windows or creation failure) — the PID-targeted sweep then terminates on
+    its own and verification still decides whether it is safe to continue.
+
+    Windows builds disagree about sizeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION)
+    (192 with the modern BASIC layout, 144 without IoInfo), so the size that this
+    kernel accepts is probed; the KILL_ON_JOB_CLOSE flag sits at offset 16 in both
+    layouts, so one buffer serves either. A wrong size fails cleanly with
+    ERROR_BAD_LENGTH, never with a partial write."""
+    if os.name != "nt":
+        return None
+    try:
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateJobObjectW.restype = ctypes.c_void_p
+        kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p]
+        kernel32.SetInformationJobObject.argtypes = [ctypes.c_void_p, ctypes.c_int,
+                                                     ctypes.c_void_p, ctypes.c_uint32]
+        handle = kernel32.CreateJobObjectW(None, None)
+        if not handle:
+            return None
+        limits = _JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+        limits.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        for size in (ctypes.sizeof(limits), 144):
+            if kernel32.SetInformationJobObject(handle, _JobObjectExtendedLimitInformation,
+                                                ctypes.byref(limits), size):
+                return handle
+        kernel32.CloseHandle(handle)
+        return None
+    except Exception:
+        return None
+
+
+def _job_attach(job, proc):
+    """Put the launcher (and, by inheritance, everything it spawns) into the job."""
+    handle = getattr(proc, "_handle", None)
+    if not job or handle is None:
+        return False
+    try:
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.AssignProcessToJobObject.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        return bool(kernel32.AssignProcessToJobObject(job, int(handle)))
+    except Exception:
+        return False
+
+
+def _job_terminate(job):
+    if job:
+        try:
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.TerminateJobObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+            kernel32.TerminateJobObject(job, 1)
+        except Exception:
+            pass
+
+
+def _job_close(job):
+    if job:
+        try:
+            ctypes.windll.kernel32.CloseHandle(job)
+        except Exception:
+            pass
+
+
+def _job_name_of(argv):
+    """The Abaqus job name from a command line like [launcher, "job=x", ...]."""
+    for part in argv:
+        text = str(part)
+        if text.startswith("job="):
+            return text[4:]
+    return ""
+
+
+def _system_processes():
+    """(pid, ppid, command line lowercased) of every process, backslashes normalized."""
+    script = ("Get-CimInstance Win32_Process | ForEach-Object "
+              "{ \"{0}`t{1}`t{2}\" -f $_.ProcessId, $_.ParentProcessId, $_.CommandLine }")
+    try:
+        completed = subprocess.run(["powershell", "-NoProfile", "-Command", script],
+                                   capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    rows = []
+    for line in completed.stdout.splitlines():
+        parts = line.split("\t", 2)
+        if len(parts) == 3 and parts[0].isdigit():
+            rows.append((int(parts[0]), int(parts[1] or 0),
+                         parts[2].replace("/", "\\").lower()))
+    return rows
+
+
+def _case_pids(processes, case_key):
+    """PIDs whose command line references THIS case (its deck dir and/or job name)."""
+    keys = [key.strip().replace("/", "\\").lower() for key in case_key if key]
+    mine = os.getpid()
+    hits = []
+    for pid, _ppid, cmdline in processes:
+        if pid == mine or not cmdline:
+            continue
+        text = cmdline.replace("/", "\\").lower()
+        if any(key and key in text for key in keys):
+            hits.append(pid)
+    return hits
+
+
+def _terminate_pid(pid):
+    """Kill one PID and its children. Never image-name based, never our own PID."""
+    if pid == os.getpid():
+        return False
+    try:
+        completed = subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)],
+                                   capture_output=True, text=True)
+        return completed.returncode == 0
+    except OSError:
+        return False
+
+
+def _terminate_case_tree(case_key, proc, job, grace_s=None):
+    """Terminate the whole case tree and verify nothing is left. Returns the list
+    of surviving PIDs (empty = safe to continue). Never deletes any file: the
+    .sta/.msg/.dat/partial ODB of a timed-out attempt are diagnostics."""
+    grace_s = _TREE_GRACE_S if grace_s is None else grace_s
+    _job_terminate(job)              # OS-level: every descendant inside the job
+    _terminate_pid(proc.pid)         # belt and braces (also covers a failed attach)
+    for pid in _case_pids(_system_processes(), case_key):
+        _terminate_pid(pid)          # sweep breakaways / later spawns of THIS case
+    deadline = time.monotonic() + grace_s
+    while True:
+        alive = _case_pids(_system_processes(), case_key)
+        if not alive:
+            proc.poll()
+            return []
+        if time.monotonic() >= deadline:
+            return alive
+        time.sleep(_TREE_POLL_INTERVAL_S)
 
 
 def _source_report(folder, name, code):

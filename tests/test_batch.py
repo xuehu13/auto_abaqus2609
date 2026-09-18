@@ -222,6 +222,40 @@ class BatchRunTests(BatchSandbox):
         self.assertEqual(rows["case_B"]["points"], "")
         self.assertEqual(rows["case_A"]["status"], DONE)
 
+    def test_a_fatal_error_stops_the_batch_before_the_next_case(self):
+        """A case whose Abaqus tree survived termination must stop the whole batch:
+        no later case may start, and the summary still records what happened."""
+        self.write_cases([{"case_id": "case_A", "surface_expression": "0.1*X"},
+                          {"case_id": "case_B", "surface_expression": "0.2*X"},
+                          {"case_id": "case_C", "surface_expression": "0.3*X"}])
+        calls = []
+
+        def fatal_case(case_path, simulation_path, *, case_document=None, work_root=None,
+                       **kwargs):
+            case_id = case_document["case_id"]
+            calls.append(case_id)
+            if case_id == "case_B":
+                work_dir = Path(work_root) / case_id
+                write_json(work_dir / "status.json",
+                           {"case_id": case_id, "status": "ABAQUS_TREE_NOT_TERMINATED",
+                            "stage": "solve", "solver": "standard_dynamic_implicit",
+                            "message": "solver tree survived termination"})
+                raise PipelineError("ABAQUS_TREE_NOT_TERMINATED",
+                                    "solver tree survived termination", fatal=True)
+            return None
+
+        with mock.patch.object(batch_module, "run_case", fatal_case):
+            with self.assertRaises(PipelineError) as caught:
+                run_batch(self.cases_path, self.simulation, defaults_path=self.defaults_path,
+                          work_root=self.work_root, log=lambda message: None)
+        self.assertEqual(caught.exception.code, "ABAQUS_TREE_NOT_TERMINATED")
+        self.assertTrue(caught.exception.fatal)
+        self.assertEqual(calls, ["case_A", "case_B"],
+                         "case_C must not start after a fatal tree failure")
+        rows = {row["case_id"]: row for row in self.summary_rows()}
+        self.assertEqual(rows["case_B"]["status"], "ABAQUS_TREE_NOT_TERMINATED")
+        self.assertEqual(rows["case_C"]["status"], PENDING)
+
     def test_done_cases_are_skipped_on_the_next_run(self):
         self.write_cases([{"case_id": "case_A", "surface_expression": "0.1*X"},
                           {"case_id": "case_B", "surface_expression": "0.2*X"}])

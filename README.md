@@ -269,7 +269,7 @@ resume 时 extract 已完成也会按当前 policy 重算这一步。它**只记
 | `<stage>.cpus` | datacheck/solve 的 CPU 数 |
 | `<stage>.standard_parallel` | 仅 Standard 传 `standard_parallel=all|solver` |
 | `<stage>.mp_mode` | 可选 `threads`/`mpi`，留空不传（本机 Explicit 用 `threads` 可绕开 smpd 报错） |
-| `<stage>.timeout_s` | 墙钟上限，超时写 `*_TIMEOUT` 并保留目录 |
+| `<stage>.timeout_s` | 墙钟上限，超时写 `*_TIMEOUT` 并保留目录（含全部证据文件）。超时会**终止该 case 的整个 Abaqus 进程树**（Job Object + 按 PID，识别键为该 case 的 deck 目录与 job 名，绝无镜像名杀法），并**确认清零后** batch 才继续；若进程杀不干净则报 `ABAQUS_TREE_NOT_TERMINATED` 停止整个 batch |
 
 命令行可覆盖：`--cpus --timeout-s --job-name --abaqus-command --runtime`。
 
