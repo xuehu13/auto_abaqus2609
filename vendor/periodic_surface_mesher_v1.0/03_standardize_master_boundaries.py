@@ -1586,6 +1586,13 @@ def main():
     #
     # We deliberately keep acceptance mild here.
     # Final FE quality belongs to later validator.
+    #
+    # 2026-09-19: the fixed "no segment > 0.20 mm" gate was removed.
+    # The boundary target spacing is a user configuration (e.g. 0.25 mm
+    # coarse meshes), so an absolute 0.20 mm ceiling must not fail the
+    # stage. Segments above 0.20 mm are still counted and reported
+    # (n_segment_gt_020 / "Segments > 0.20"), they just no longer
+    # decide PASS / FAIL.
     # --------------------------------------------------------
 
     pass_status = bool(
@@ -1596,10 +1603,6 @@ def main():
         and
         np.count_nonzero(
             all_segments < 0.05
-        ) == 0
-        and
-        np.count_nonzero(
-            all_segments > 0.20
         ) == 0
     )
 

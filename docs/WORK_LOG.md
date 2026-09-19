@@ -356,3 +356,57 @@ build.py（shell 校验 + 报告字段）按任务许可做了必要小改。
 ### 关联提交
 
 - 本轮改动已随本次提交入库（本条目 + experiment.py + production.json + RUN_GUIDE + 测试）。
+
+---
+
+## 005 — 2026-09-19 10:08 — 修复参数实验暴露的两个问题：vendor 0.20mm 硬门 + *Fixed Mass Scaling 位置
+
+### 背景
+
+`scripts/run_para_aly_24.py` 的 24 组 Explicit 参数实验（3 曲面 × Fine/Coarse × T=0.01/0.02 ×
+MS0/MS9）暴露两个问题：Coarse（0.25mm）12 例全部死于 vendor Stage 03 的固定 0.20mm 上限；
+Fine+MS9 6 例全部 Data Check 失败。用户明确授权修改冻结 vendor 的验收规则例外，并要求
+保留 Coarse 0.25 配置、不破坏 Fine baseline、不重跑完整实验。
+
+### 根因（均以本地证据坐实）
+
+1. **Stage 03 固定上限**：`03_standardize_master_boundaries.py` 的 pass_status 含
+   `all_segments > 0.20 == 0`。Coarse diverse_05 报告：`n_segment_gt_020=382`、
+   `segment_max_mm=0.25`（=配置值），而 `max_abs_f≈9e-12`、`endpoint_mismatch=0`、
+   `n_segment_lt_005=0` 全过——唯一 FAIL 原因即写死的 0.20。
+2. **Mass Scaling 位置**：`build.py` 把 `*Fixed Mass Scaling` 写在 `*Step` 之前。
+   MS9 的 `.dat` 第 66 行原始报错：`***ERROR: in keyword *FIXEDMASSSCALING, file
+   "step_loading.inc", line 4: The keyword is misplaced. It can be suboption for
+   the following keyword(s)/level(s): step`。
+
+### 修复
+
+- **Stage 03**：pass_status 删除 `>0.20` 条款；保留 `max_f<1e-8`、`endpoint mismatch<1e-10`、
+  `segments<0.05==0` 三个必要条件；`Segments > 0.20` 打印与 `n_segment_gt_020` 报告统计保留。
+- **Stage 04（施工中发现的第三处同款 0.20 门）**：`04_export_cgal_input.py` 的
+  `MAX_SEGMENT=0.20` 同样 gate 了 feature 曲线段长（Coarse 首次推进到 Stage 04 即 FAIL）。
+  同样仅删除 max-segment 条款；`MIN_SEGMENT>0.05`、plane/f/endpoint 门全保留；
+  `global_min/max_segment_mm` 统计保留。此项略出用户点名的文件清单，但为验证 A
+  「后续 CGAL 正常」的必要条件，与 Stage 03 同类同处理。
+- **AI_HANDOFF_SPEC §10.3/§10.4** 最小同步（硬性 PASS 清单去掉 0.20 行 + 变更注记；
+  契约行改为"仅报告、无硬性上限"）。`REFERENCE_RESULTS.md` 历史数值未动。
+- **build.py**：`*Fixed Mass Scaling`（含注释）移入 Explicit `*Step` 内
+  （`*Dynamic, Explicit` 之后、`*Boundary` 之前）；MS0/Standard 不输出；无 ELSET、
+  无 adaptive/target dt。`SOURCE_DATACHECK_INVALID` 保护逻辑未动。
+- **MANIFEST_SHA256.txt**：同步 03/04/AI_HANDOFF_SPEC 三行 SHA，`vendor_hashes()` 31 文件全过。
+
+### 验证
+
+- 单测新增/扩展 4 处（solver 关键字顺序 + Standard 无 mass scaling + Stage 03/04
+  源码契约 + manifest 一致性），全套 **194 OK**。
+- **真实验证 A**：diverse_05 Coarse(0.25) 全网格流程 Stage 00→06 通过
+  （`work/fix_verify/diverse_05`），`mesh_result.json` 正常生成；mesh Data Check pass=true。
+- **真实验证 B**：diverse_05 Fine + Explicit T=0.02 + MS9 → `*Fixed Mass Scaling, factor=9.0`
+  位于 `*Step` 内（`*Dynamic, Explicit` 之后、`*Boundary` 之前）；真实 Abaqus 2026
+  Data Check = `DATACHECK_COMPLETED_WITH_WARNINGS`（0 error / 1 warning）。MS0 负例：
+  deck 无 Mass Scaling、Data Check 同样通过。
+
+### 关联提交
+
+- 本轮修复本地提交（未 push，待用户要求）。`scripts/run_para_aly_24.py` 为用户自己的
+  实验驱动脚本，由用户自行提交。

@@ -552,11 +552,6 @@ def render_step_and_loading(simulation, facts):
     subheading = "Compression: eps=%.6g, U3=%.6g mm, T=%.6g s" % (
         simulation["loading"]["target_compression_strain"], target_u3, period)
     lines = []
-    if kind == EXPLICIT_DYNAMIC and block["mass_scaling"]["enabled"]:
-        lines.extend(["** Explicit mass scaling is ENABLED in solver.explicit_dynamic: it changes",
-                      "** the density field, so these results are not directly comparable with an",
-                      "** unscaled explicit (or implicit) solution.",
-                      "*Fixed Mass Scaling, factor=" + _fmt(block["mass_scaling"]["factor"])])
     lines.extend(_amplitude_lines(simulation, period))
     if kind == STANDARD_DYNAMIC_IMPLICIT:
         lines.append("*Step, name=%s, nlgeom=%s, inc=%d"
@@ -572,6 +567,15 @@ def render_step_and_loading(simulation, facts):
     elif kind == EXPLICIT_DYNAMIC:
         lines.extend(["*Step, name=" + _STEP_NAME, subheading, "*Dynamic, Explicit",
                       ", " + _fmt(period)])
+        if block["mass_scaling"]["enabled"]:
+            # *Fixed Mass Scaling is a step-level keyword: Abaqus 2026 rejects it
+            # outside *Step ("misplaced. It can be suboption for ... step").
+            lines.extend(["** Explicit mass scaling is ENABLED in solver.explicit_dynamic: "
+                          "it changes",
+                          "** the density field, so these results are not directly "
+                          "comparable with an",
+                          "** unscaled explicit (or implicit) solution.",
+                          "*Fixed Mass Scaling, factor=" + _fmt(block["mass_scaling"]["factor"])])
     else:
         raise PipelineError("NOT_IMPLEMENTED", "solver.type=" + repr(kind))
     lines.extend(["*Boundary, amplitude=" + _AMPLITUDE,

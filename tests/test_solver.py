@@ -145,8 +145,16 @@ class SolverDeckTests(unittest.TestCase):
             self.explicit(doc),
             doc["solver"]["explicit_dynamic"].update(
                 mass_scaling={"enabled": True, "factor": 100.0})))
-        self.assertIn("*Fixed Mass Scaling, factor=100.0",
-                      self.lines(on, "blocks/step_loading.inc"))
+        step_lines = self.lines(on, "blocks/step_loading.inc")
+        self.assertIn("*Fixed Mass Scaling, factor=100.0", step_lines)
+        # The keyword is step-level: it must sit INSIDE the Explicit step.
+        order = [step_lines.index(marker) for marker in
+                 ("*Step, name=Compression", "*Dynamic, Explicit",
+                  "*Fixed Mass Scaling, factor=100.0",
+                  "*Boundary, amplitude=AMP_COMPRESSION")]
+        self.assertEqual(order, sorted(order),
+                         "*Fixed Mass Scaling must follow *Dynamic, Explicit "
+                         "and precede *Boundary")
         self.assertEqual(document["solver"]["mass_scaling"],
                          {"enabled": True, "factor": 100.0})
         with self.assertRaises(PipelineError) as caught:
@@ -154,6 +162,12 @@ class SolverDeckTests(unittest.TestCase):
                 self.explicit(doc),
                 doc["solver"]["explicit_dynamic"].update(mass_scaling={"enabled": True})))
         self.assertEqual(caught.exception.code, "CONFIG_INVALID")
+
+    def test_standard_deck_has_no_mass_scaling(self):
+        standard, _ = self.deck()
+        self.assertFalse([line for line in self.lines(standard, "blocks/step_loading.inc")
+                          if "Mass Scaling" in line],
+                         "Standard decks must never carry a mass scaling keyword")
 
     def test_self_contact_switch_applies_to_both_solvers(self):
         for mutate in (lambda doc: doc["contact"].update(self_contact=False),

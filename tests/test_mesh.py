@@ -15,7 +15,8 @@ sys.path.insert(0, str(ROOT / "tests"))
 
 from pipeline.common import PipelineError                          # noqa: E402
 from pipeline.mesh import (load_bundle, load_case, pbc_relations,   # noqa: E402
-                           prepare_ingredients, render_pbc_include, vendor_case)
+                           prepare_ingredients, render_pbc_include, vendor_case,
+                           vendor_hashes)
 from sandbox import CASE, SIMULATION, synthetic_bundle, write_bundle  # noqa: E402
 
 CASE_DOC = json.loads(CASE.read_text(encoding="utf-8"))
@@ -228,6 +229,51 @@ class IngredientTests(unittest.TestCase):
                 with self.assertRaises(PipelineError) as caught:
                     self._prepare(mutate)
                 self.assertEqual(caught.exception.code, "CONFIG_INVALID")
+
+
+class VendorAcceptanceTests(unittest.TestCase):
+    """Stage 03 boundary acceptance: the 0.20 mm ceiling is a REPORTED statistic,
+    not a PASS/FAIL gate (boundary spacing is user config, e.g. 0.25 mm coarse)."""
+
+    VENDOR = Path(ROOT) / "vendor" / "periodic_surface_mesher_v1.0"
+    STAGE03 = "03_standardize_master_boundaries.py"
+
+    def test_manifest_matches_the_vendor_tree(self):
+        hashes = vendor_hashes()
+        self.assertIn(self.STAGE03, hashes)
+
+    def test_stage03_keeps_necessary_gates_and_drops_only_the_020_ceiling(self):
+        source = (self.VENDOR / self.STAGE03).read_text(encoding="utf-8")
+        status_index = source.index("STANDARD BOUNDARY STATUS")
+        pass_block = source[:status_index]
+        # The remaining necessary quality gates:
+        self.assertIn("max_f < 1.0e-8", pass_block)
+        self.assertIn("max_endpoint_mismatch", pass_block)
+        self.assertIn("all_segments < 0.05", pass_block)
+        # The removed ceiling: no gate on segments > 0.20 may survive in the block
+        # that decides PASS/FAIL.
+        gate = pass_block[pass_block.index("pass_status = bool("):]
+        self.assertNotIn("all_segments > 0.20", gate)
+        # The statistic must survive as diagnostics (print + report JSON).
+        self.assertIn('"Segments > 0.20     ="', source)
+        self.assertIn('"n_segment_gt_020"', source)
+
+    def test_stage04_drops_only_the_020_ceiling_too(self):
+        """Stage 04 gates the FEATURE curves with the same fixed 0.20 mm ceiling;
+        it must keep its necessary gates and keep the segment statistics."""
+        source = (self.VENDOR / "04_export_cgal_input.py").read_text(encoding="utf-8")
+        self.assertIn("MAX_SEGMENT = 0.20", source)
+        status_index = source.index("PERIODIC_3 FEATURE PREP STATUS")
+        gate = source[:status_index]
+        gate = gate[gate.index("pass_status = bool("):]
+        self.assertNotIn("<= MAX_SEGMENT", gate)
+        # Necessary gates that must survive:
+        self.assertIn("global_min_segment", gate)
+        self.assertIn("> MIN_SEGMENT", gate)
+        self.assertIn("global_max_node_f", gate)
+        self.assertIn("max_endpoint_class_mismatch", gate)
+        # Segment statistics stay in the report JSON as diagnostics.
+        self.assertIn('"global_max_segment_mm"', source)
 
 
 if __name__ == "__main__":

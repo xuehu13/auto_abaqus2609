@@ -584,10 +584,14 @@ Step 02 只解决 seam 的**拓扑顺序**，原始 MC 边仍可能极短，不�
 max |f| < 1e-8
 max endpoint periodic mismatch < 1e-10
 number of segments < 0.05 mm == 0
-number of segments > 0.20 mm == 0
 ```
 
 这些是当前实现针对 Fig.1/当前长度尺度的工程阈值，不应在未来盲目放大。
+
+2026-09-19 变更：`number of segments > 0.20 mm == 0` 不再是硬性 PASS 条件。
+boundary target spacing 是用户可配置参数（例如 Coarse 档 0.25 mm），固定 0.20 mm
+上限会与之冲突。超过 0.20 mm 的 segment 仍然统计并写入报告
+（`n_segment_gt_020` / `Segments > 0.20`），只作诊断，不决定 PASS / FAIL。
 
 ## 10.4 输出数据契约
 
@@ -629,7 +633,7 @@ bounds_ok
 max plane error <= feature_plane_mm
 max node |f| <= 1e-8
 min segment > 0.05 mm
-max segment <= 0.20 mm
+max segment reported (no hard upper gate since 2026-09-19; Fig.1 baseline 0.18 mm)
 max endpoint class mismatch <= feature_periodic_mm
 ```
 

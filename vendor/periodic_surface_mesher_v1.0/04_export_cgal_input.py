@@ -798,6 +798,11 @@ def main():
 
     # ========================================================
     # Acceptance
+    #
+    # 2026-09-19: the fixed "feature segment <= 0.20 mm" gate was
+    # removed, matching stage 03. The boundary target spacing is user
+    # configuration (e.g. 0.25 mm coarse meshes); the segment length
+    # statistics stay in the JSON report as diagnostics only.
     # ========================================================
 
     pass_status = bool(
@@ -822,11 +827,6 @@ def main():
 
         global_min_segment
         > MIN_SEGMENT
-
-        and
-
-        global_max_segment
-        <= MAX_SEGMENT + 1.0e-10
 
         and
 
