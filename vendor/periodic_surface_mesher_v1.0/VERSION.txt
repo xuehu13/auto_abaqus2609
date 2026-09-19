@@ -1,3 +1,6 @@
 Periodic Surface Mesher v1.0
 Validated: 2026-09-12
 Status: Fig.1 end-to-end regression PASS through Abaqus 2026 Data Check.
+Boundary acceptance: segments > 0.20 mm are reported only (no hard gate)
+since 2026-09-19; 0.25 mm boundary spacing revalidated end-to-end
+(stages 00-06 + Abaqus mesh data check, diverse_05) on 2026-09-18/19.

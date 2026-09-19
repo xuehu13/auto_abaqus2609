@@ -542,8 +542,9 @@ def render_step_and_loading(simulation, facts):
 
     The amplitude and the loading are identical in both solvers: same amplitude
     shape over the same period and the same mesh-derived target displacement.
-    Explicit mass scaling, when enabled by config, is model data and is written
-    before the step.
+    Explicit mass scaling, when enabled by config, is written as
+    ``*Fixed Mass Scaling`` INSIDE the Explicit step (a step-level keyword:
+    directly after ``*Dynamic, Explicit``, before the loading *Boundary).
     """
     kind = solver_type(simulation)
     block = solver_block(simulation)
