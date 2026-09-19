@@ -410,3 +410,29 @@ Fine+MS9 6 例全部 Data Check 失败。用户明确授权修改冻结 vendor �
 
 - 本轮修复本地提交（未 push，待用户要求）。`scripts/run_para_aly_24.py` 为用户自己的
   实验驱动脚本，由用户自行提交。
+
+---
+
+## 006 — 2026-09-19 10:2x — MS9 warning 确认 + 注释/VERSION.txt 同步
+
+用户复查条目 005 后的三个小疑问，全部处理：
+
+1. **MS9 Data Check 唯一 warning 原文**（`.dat` 第 186 行，`.msg` 无 warning）：
+   `***WARNING: THE OPTION *BOUNDARY,TYPE=DISPLACEMENT HAS BEEN USED; CHECK STATUS
+   FILE BETWEEN STEPS FOR WARNINGS ON ANY JUMPS PRESCRIBED ACROSS THE STEPS IN
+   DISPLACEMENT VALUES OF TRANSLATIONAL DOF. FOR ROTATIONAL DOF MAKE SURE THAT
+   THERE ARE NO SUCH JUMPS. ALL JUMPS IN DISPLACEMENTS ACROSS STEPS ARE IGNORED`。
+   **与 mass scaling 无关**：这是用 `*Boundary, type=displacement` 施加 RP_TOP 位移的
+   通用提示（跨 step 位移跳转会被忽略的例行告知）；**MS0 对照组的 `.dat` 里有逐字相同
+   的同一条 warning**（两个 datacheck 均为 0 error / 1 warning）。不影响 MS9 参数
+   实验的物理含义，也不涉及质量缩放适用范围/质量增加/刚体/shell formulation。
+2. **build.py 陈旧注释修正**：`render_step_and_loading` docstring 原写
+   "mass scaling ... is written before the step"（关键字位置修复前的旧表述），已改为
+   "written as *Fixed Mass Scaling INSIDE the Explicit step (after *Dynamic, Explicit,
+   before the loading *Boundary)"。
+3. **VERSION.txt 最小更新**：补两行——"segments > 0.20 mm are reported only (no hard
+   gate) since 2026-09-19；0.25 mm boundary spacing revalidated end-to-end
+   (stages 00-06 + Abaqus mesh data check, diverse_05) on 2026-09-18/19"。
+   MANIFEST 中 VERSION.txt 行同步，`vendor_hashes()` 31 文件全过。
+
+全套测试 **194 OK**。关联提交：`f384e54`（已推送 origin/main）。
