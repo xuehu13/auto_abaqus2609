@@ -407,6 +407,17 @@ batch 的 JSONL 读取、defaults 合并、重复 case_id、失败隔离、DONE/
 
 ## 真实验证状态
 
+### 2026-09-20 补充：para_aly 24 组 Explicit 参数敏感性实验
+
+- 3 曲面 × mesh(0.18/0.25) × T(0.01/0.02s) × MS(OFF/9) = **24/24 DONE**（累计 3.59h），
+  全部到达 20% 压缩、101 点曲线、0 error。
+- 峰值应力对三参数稳健（≤±5%）；逐点影响排序：mesh > mass scaling > T
+  （粗网格应力系统性偏高 4.1–4.5%，MS9 抬高软化解 2.4–4.1%，T 加倍降 1.5–3.8%）。
+- 耗时杠杆：MS9 加速 2.0–2.7×，T×2 → 1.9×，Fine→Coarse → 2.4×。
+- **全部 24 例 KE/IE=0.84–1.20，非准静态**（且对 T/MS 不敏感，动能来自坍塌带结构
+  动力学）；显式曲线作准静态解释前需做 T 收敛实验。
+- 设计与分析全文：`docs/WORK_LOG.md` 条目 007；驱动脚本 `scripts/run_para_aly_*.py`。
+
 ### 2026-09-18 补充：ref30_02–05 implicit / explicit 实验（8CPU）
 
 - implicit（8CPU + `standard_parallel=all`）：datacheck 4/4 通过，**all 模式未复现历史

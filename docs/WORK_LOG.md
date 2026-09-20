@@ -436,3 +436,103 @@ Fine+MS9 6 例全部 Data Check 失败。用户明确授权修改冻结 vendor �
    MANIFEST 中 VERSION.txt 行同步，`vendor_hashes()` 31 文件全过。
 
 全套测试 **194 OK**。关联提交：`f384e54`（已推送 origin/main）。
+
+---
+
+## 007 — 2026-09-20 13:52 — para_aly 24 组参数敏感性实验：完成、修复、重跑与完整分析
+
+### 研究问题
+
+Explicit 求解点阵压溃时，三个最重要的计算参数——**网格尺寸**（boundary/edge/facet
+0.18 vs 0.25 mm）、**加载时长 T**（0.01 vs 0.02 s）、**质量缩放**（OFF vs factor=9）——
+对应力-应变曲线、KE/IE 与计算时长各有多大影响？参数重要性如何排序？
+
+### 实验设计
+
+3 曲面（diverse_05 早峰软化 / diverse_04 单调硬化 / diverse_28 五次斜率反转振荡）×
+2 mesh × 2 T × 2 MS = **24 case**。固定：Explicit、理想弹塑性（E=484 MPa、ν=0.4、
+ρ=1.1e-9、plastic_table=[[8.0,0.0]]）、ε=0.2 smooth_step、S3R/5 积分点/relative_density
+0.1、friction 0.6、self_contact true、cpus=8、workers=1、history=T/100（101 点）。
+驱动脚本 `scripts/run_para_aly_24.py`（8 组配置 → 现有 start_experiment()）；
+结果 `work/para_aly/<mesh>/<T>/<MS>/<case>/`（git-ignored），配置快照留各 batch 目录。
+
+### 过程（含两次失败与修复）
+
+1. **首轮过夜运行**：Fine/MS0 6 例 DONE；**Fine/MS9 6 例全部 Physical Data Check 失败**
+   （根因：`*Fixed Mass Scaling` 被写在 `*Step` 之前，Abaqus 2026 报 misplaced；
+   solve 阶段的 `SOURCE_DATACHECK_INVALID` 是正确的下游保护）；**Coarse 12 例全部死于
+   vendor Stage 03**（根因：写死的 segment>0.20mm 硬门与用户配置 0.25mm 冲突）。
+2. **修复（条目 005，commit `0135dc7`）**：Stage 03/04 删除 0.20mm 硬门（统计保留为
+   诊断）；`*Fixed Mass Scaling` 移入 Explicit Step 内；MANIFEST/SPEC/VERSION 同步。
+   修复经真实最小验证：Coarse diverse_05 网格 00→06 全过 + mesh datacheck PASS；
+   Fine/MS9/T0.02 datacheck 0 error；MS0 负例干净（条目 006 确认唯一 warning 与 MS 无关）。
+3. **清理与重跑**：精确删除 18 个失败目录（保留 4 份快照/batch 配置；成功 6 例不动）→
+   smoke 单例（diverse_04/Coarse/T0.02/MS9 完整六 stage DONE）→
+   `scripts/run_para_aly_remaining17.py`（DONE 自动 skip，smoke 例出现在统一
+   batch_summary.csv）一夜跑完剩余 17 例。
+
+### 结果
+
+- **24/24 DONE**，101 点曲线全部到达 ε≈0.200（0.1992–0.2006）；累计墙钟 **3.59 h**，
+  最重一例 Fine/T0p02/MS0/diverse_04 = 26.3 min。
+- Abaqus 0 error；warning 仅 2 种且 24 例一致（*BOUNDARY,TYPE=DISPLACEMENT 例行提示、
+  *MPC/*EQUATION echo 抑制 NOTE）；无 distortion/element deletion/negative
+  eigenvalue/singularity。12 个 MS9 deck 关键字位置全部正确。
+- mesh 规模（diverse_04）：Fine 8372 节点/15914 单元 vs Coarse 3489/6368（2.5×）；
+  厚度 0.37585 vs 0.37570 mm（相对密度公式下随表面积略变）。
+
+### 分析
+
+**耗时模型**（近似独立可乘）：MS9 加速 **2.65×（Fine）/ 2.0×（Coarse）**（实测 dt：
+Fine 1.52e-8→4.15e-8，≈理论 ×3；Coarse 2.37e-8→9.17e-8）；T×2 → 时间 **1.85–1.98×**；
+Fine→Coarse → **2.4×**。最贵/最便宜组合 ≈ **11×**。
+
+**峰值应力对三参数全部稳健**（跨 8 组合离散度：diverse_05 ±5.0%、diverse_04 ±4.5%、
+diverse_28 ±2.7%）——无论怎么选参数，峰值水平可信。
+
+**逐参数归因**（固定应变点 e=0.15/0.199，MPa，对另两因素取平均）：
+
+| 曲面 | mesh(粗−细) | T(0.02−0.01) | MS(9−0) |
+|---|---|---|---|
+| diverse_04 | **+0.0135 / +0.0079** | −0.0039 / −0.0053 | **+0.0084 / +0.0034** |
+| diverse_05 | +0.0005 / +0.0017 | −0.0040 / −0.0022 | **+0.0053 / +0.0029** |
+| diverse_28 | **+0.0078 / +0.0027** | +0.0002 / +0.0005 | −0.0002 / −0.0002 |
+
+1. **mesh 第一重要**（曲线均值差 4.1–4.5%）：粗网格应力系统性偏高（三曲面方向一致），
+   高应变段最明显（坍塌带自由度少、局部化更早更硬）。
+2. **MS 第二**（2.4–4.1%）：MS9 系统性抬高 diverse_04/05 的应力（惯性增大→响应偏硬），
+   软化/陡降段最敏感（diverse_05 e≈0.05 处点差 24–34%）。
+3. **T 第三**（1.5–3.8%）：更长 T 应力略降（方向符合准静态化预期；理想弹塑性无率相关，
+   纯惯性效应）。
+4. **振荡型曲面（diverse_28）逐点差可达 40–50%**，但发生在 e≈0.17–0.19 局部极小值附近，
+   是**坍塌事件的相位移动**而非系统误差（端点 e=0.199 离散仅 ±1.9%）——对这类曲面
+   应比峰值/平台均值，不比逐点。
+
+**最重要的物理发现：24 例全部不是准静态**。max KE/IE = **0.84–1.20**（组合均值
+0.93–1.07），与论文判据（<1%）差两个数量级；且 KE/IE 对 T 加倍和 MS9 **都不敏感**
+（若整体惯性主导，T×2 应使 KE/IE 减半——没有），说明动能主要来自接触/坍塌带的
+结构动力学事件（屈曲、弹跳、接触冲击），不是整体加载速率。隐式对照（ref30_05，
+T=1s）KE/IE=0.53%。**含义：本批显式曲线是"动态压溃"响应；0.01–0.02s 窗口内加长 T
+仅带来 ≤3.8% 变化，尚不能断言已收敛到准静态极限。**
+
+### 下一步建议（优先级序）
+
+1. **准静态收敛实验**：1–2 曲面 × T=0.05/0.1/0.2s（Coarse/MS9 便宜 ≈17 min/例），
+   回答"曲线何时收敛、KE/IE 何时显著下降"——显式结果能否当准静态用的直接依据。
+2. **MS factor 扫描**（9/25/100，Fine/T0p02）：确认大 factor 下软化解漂移。
+3. **第三档网格**（0.21 或 0.35mm）+ **thickness_mode=fixed 锁厚**：网格无关解 +
+   解耦网格密度与厚度随表面积的变化。
+4. **摩擦扫描**（0.2/0.6/1.0）：接触主导问题里与实验对标的最大不确定项。
+5. 壳积分点 5 vs 9；self_contact / PBC 转动自由度对照。
+6. 方法：振荡曲面峰值/平台指标；24 例聚合出表脚本。
+
+### 产出物
+
+- 脚本（本提交入库）：`scripts/run_para_aly_24.py`、`run_para_aly_smoke_one.py`、
+  `run_para_aly_remaining17.py`（`remaining18` 方案被单例 smoke + 17 重跑取代，已删）。
+- 结果与配置快照：`work/para_aly/`（本地，git-ignored）。
+- 本条目即完整分析报告；修复部分详见条目 005/006。
+
+### 关联提交
+
+- 本次提交（脚本 + 本条目 + HANDOFF/README 同步）。

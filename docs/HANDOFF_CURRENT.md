@@ -160,3 +160,23 @@ plugin/backend 体系、DAG engine、数据库、worker daemon；不要在 retry
   正常完成路径同步回归；`pixi run test` → core 171 OK + boundary 5 OK。
 - 已知残留（DEFERRED）：watchdog、外部杀进程后的 reconciliation、mesh_datacheck 超时
   残留产物使 vendor 07 幂等校验恒 FAIL 的 resume 语义（详见 RB-014 解决记录）。
+
+## 11. 2026-09-19/20：para_aly 24 组参数敏感性实验（Explicit）完成
+
+3 曲面（diverse_05/04/28）× mesh(Fine 0.18 / Coarse 0.25) × T(0.01/0.02s) ×
+MS(OFF/factor9) = 24 case 全部 DONE（累计 3.59h）。脚本
+`scripts/run_para_aly_{24,smoke_one,remaining17}.py`（调现有 start_experiment/run_batch）；
+结果在 `work/para_aly/<mesh>/<T>/<MS>/<case>/`。完整分析见 WORK_LOG 条目 007。
+
+要点：
+- 期间修复两个真实问题（见条目 005）：vendor Stage 03/04 的 0.20mm 硬门
+  （block 用户配置的 0.25mm Coarse）与 `*Fixed Mass Scaling` 关键字位置（必须在
+  Explicit Step 内）；MANIFEST/SPEC/VERSION 已同步。
+- 耗时模型（近似可乘）：MS9 加速 2.0–2.7×、T×2 → 1.9×、Fine→Coarse → 2.4×。
+- 峰值应力对三参数稳健（离散 ≤±5%）；逐点曲线影响排序：mesh（4.1–4.5%，粗→偏高）
+  > mass scaling（2.4–4.1%，抬硬）> T（1.5–3.8%，加长略降）；振荡曲面（diverse_28）
+  逐点差 40–50% 是坍塌相位移动，应比峰值/平台而非逐点。
+- **全部 24 例非准静态**：KE/IE=0.84–1.20（差论文判据两个数量级），且对 T 加倍与
+  MS9 均不敏感——动能来自接触/坍塌带结构动力学，非整体加载速率。
+- 下一步建议（详见 WORK_LOG 007）：准静态收敛实验（T=0.05/0.1/0.2s）、MS factor
+  扫描、第三档网格+fixed 厚度、摩擦扫描。
