@@ -559,9 +559,14 @@ def render_step_and_loading(simulation, facts):
                      % (_STEP_NAME, "YES" if block["nlgeom"] else "NO",
                         block["maximum_increments"]))
         lines.append(subheading)
-        lines.append("*Dynamic, application=%s, initial=%s" % (
-            block["application"].replace("_", " ").upper(),
-            "YES" if block["initial_acceleration"] else "NO"))
+        if block["application"] == "static":
+            # 普通静力分析步（用户显式配置 application="static"）：
+            # 增量控制行与隐式动力学同格式（initial, total, min, max）。
+            lines.append("*Static")
+        else:
+            lines.append("*Dynamic, application=%s, initial=%s" % (
+                block["application"].replace("_", " ").upper(),
+                "YES" if block["initial_acceleration"] else "NO"))
         lines.append("%s, %s, %s, %s" % (_fmt(block["initial_increment_s"]), _fmt(period),
                                          _fmt(block["minimum_increment_s"]),
                                          _fmt(block["maximum_increment_s"])))

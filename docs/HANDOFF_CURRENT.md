@@ -192,7 +192,7 @@ MS(OFF/factor9) = 24 case 全部 DONE（累计 3.59h）。脚本
   `max_stress_MPa=0.25624`、`max_ke_ie_ratio=0.00529`，Explicit 的对应值为
   `0.24785`、`0.93540`。求解时长约 872s / 2043s；两者分析步时长分别为
   1.0s / 0.02s，不能仅凭峰值应力接近就断言数值或科学质量等价。
-- `pipeline/build.py` 的待提交改动允许 `application="static"` 输出 `*Static`；
+- `pipeline/build.py` 的已提交改动允许 `application="static"` 输出 `*Static`；
   历史试算的真实 Abaqus Data Check 完成并有 warnings，但 solve 因时间增量低于
   最小值而失败。该证据只证明输入语法可被读取，不证明静力求解可收敛。
 - `scripts/test_sigmoid_2x2_geometry.py` 是 G/P/D/I-WP 单个 2×2 Sigmoid 曲面的

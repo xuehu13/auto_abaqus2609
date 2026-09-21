@@ -163,6 +163,17 @@ class SolverDeckTests(unittest.TestCase):
                 doc["solver"]["explicit_dynamic"].update(mass_scaling={"enabled": True})))
         self.assertEqual(caught.exception.code, "CONFIG_INVALID")
 
+    def test_static_application_renders_a_static_procedure(self):
+        """application="static" 走 *Static（标准静力），不产生 *Dynamic 关键字。"""
+        def static_standard(doc):
+            doc["solver"]["standard_dynamic_implicit"]["application"] = "static"
+
+        deck, document = self.deck(static_standard)
+        lines = self.lines(deck, "blocks/step_loading.inc")
+        self.assertIn("*Static", lines)
+        self.assertFalse([line for line in lines if line.startswith("*Dynamic")],
+                         "static application must not emit *Dynamic")
+
     def test_standard_deck_has_no_mass_scaling(self):
         standard, _ = self.deck()
         self.assertFalse([line for line in self.lines(standard, "blocks/step_loading.inc")
