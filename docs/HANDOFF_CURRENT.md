@@ -74,8 +74,8 @@ pixi run cli run-batch --cases config/cases.jsonl --case-defaults config/case_de
 - 冻结 vendor 阶段 05 会拒绝一部分曲面（例：`diverse_01`，Z 面 PBC 配对非双射）。
   历史 attempt `nb30_ref30_01_mesh` 对同一曲面也是 `STEP 05 STATUS: FAIL`，不是本轮引入。
   batch 会把它们记为 `MESH_STAGE_FAILED` 并继续。
-- Explicit smoke（`time_period_s=1e-3`）的 `max_ke_ie_ratio` ≈ 1.1–1.3，**不是准静态**，
-  只用于验证链路。
+- Explicit smoke（`time_period_s=1e-3`）的全程 `max_ke_ie_ratio` ≈ 1.1–1.3；
+  该试算只用于验证链路，没有完成准静态验收。
 
 ## 6. 待办（下一轮，若还有）
 
@@ -130,10 +130,11 @@ plugin/backend 体系、DAG engine、数据库、worker daemon；不要在 retry
   threads-per-domain 错误**）；solve 与历史同位失败——ref30_02 停滞 0.312、ref30_04 停滞
   0.532（均 1500s 上限 TIMEOUT）、ref30_03 快速 SOLVE_FAILED（364.5s）；**ref30_05 分析实际
   跑完**（~27–28 min，超出当时墙钟被记 TIMEOUT，`.sta` 完成标记 + ODB 完整），恢复提取：
-  final_strain 0.20000 / max_stress 0.2562 MPa / 78 点 / **KE/IE 0.53%（满足 <1% 准静态）**，
+  final_strain 0.20000 / max_stress 0.2562 MPa / 78 点 / **全程 max KE/IE 0.53%**
+  （低于 1% 能量阈值，非综合准静态 PASS），
   存于 `implicit/ref30_05_recovered_from_timeout/results/`。
 - **explicit T=0.006 4 例全部 DONE**：final_strain ≈0.200、101 点曲线，solve 7.2–19.4 min；
-  **KE/IE ≈ 0.93–1.02，不满足准静态**（真实动力响应，不能当准静态曲线解释）。
+  全程 max KE/IE ≈ 0.93–1.02，启动阶段分母效应未排除，准静态质量待复核。
 - **explicit T=0.01**：用户暂停中。ref30_02 解到 ~83% step time 停止（实测比 T=0.006 慢约
   1.4×，推算全程 ~17 min，可在 30 min 内完成）；ref30_03–05 未启动。续跑即重跑 driver，
   RUNNING 会被当作"上次进程已死"从 solve 续起。
@@ -199,6 +200,7 @@ MS(OFF/factor9) = 24 case 全部 DONE（累计 3.59h）。脚本
   几何预览和轻量检查，不生成 Abaqus 网格。`进展0921.pptx` 提到的 200 组组合及
   73.5% 几何成功率尚未在仓库找到对应原始数据或可重跑的批量程序，应作为待复核的
   汇报结论，不写成流水线已验证能力。
-- 上述新增比较、绘图和几何预览脚本仍在未跟踪工作区；生成图片和 Abaqus 结果位于
-  本地 `work/` 或预览输出目录。提交前需逐项确认脚本的结果来源、输出目录和
-  再运行是否会改写历史 attempt；本轮不将这些结果文件纳入 Git。
+- 经复核，硬化材料对照驱动、4 个只读绘图脚本及单例 Sigmoid 预览脚本均改为每次
+  生成新的 `work/<attempt>` 目录；对应依赖由 `pixi.toml` / `pixi.lock` 管理。
+  理想弹塑性失败试算驱动，以及不同塑性表对比的单图脚本仍留本地研究草稿。
+  生成图片、配置快照与 Abaqus 结果不入 Git；完整记录见 `WORK_LOG.md` 条目 008。

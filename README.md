@@ -407,6 +407,35 @@ batch 的 JSONL 读取、defaults 合并、重复 case_id、失败隔离、DONE/
 
 ## 真实验证状态
 
+### 2026-09-21 补充：硬化对照与几何预览
+
+- `diverse_05` 的含硬化材料 Implicit / Explicit 对照均为 `DONE`、约 20% 压缩，
+  峰值应力分别为 0.25624 / 0.24785 MPa；两者分析步时长不同（1.0 / 0.02 s），
+  应变 ≥1% 的逐点平均相对误差约 29.45%，不据此宣称求解器结果等价。
+- `application="static"` 的 `*Static` deck 通过真实 Abaqus Data Check，但试算
+  solve 未收敛；单例 2×2 Sigmoid 脚本只完成零厚度几何初筛，200 组统计待原始数据复核。
+- 可复现脚本见 `scripts/make_para_aly_ppt_figures.py`、
+  `scripts/make_para_aly_config_figures.py`、`scripts/make_para_aly_runtime_table.py`、
+  `scripts/make_hardening_compare_figure.py` 与 `scripts/test_sigmoid_2x2_geometry.py`。
+  这些图与预览每次生成新的 `work/` 目录；
+  `scripts/run_hardening_compare.py --check-only` 只核对配置，不启动 Abaqus。
+  `make_para_aly_ppt_figures.py` 的图 07/08 混用了不同塑性表，只能作历史示意；
+  同材料求解器对照请看硬化材料图。详见 `docs/WORK_LOG.md` 条目 008。
+
+```powershell
+# 只读已有结果；每次在 work/ 下创建新的图表目录
+pixi run -e geo -- python -B scripts/make_para_aly_ppt_figures.py
+pixi run -e geo -- python -B scripts/make_para_aly_config_figures.py
+pixi run -e geo -- python -B scripts/make_para_aly_runtime_table.py
+pixi run -e geo -- python -B scripts/make_hardening_compare_figure.py
+pixi run -e geo -- python -B scripts/test_sigmoid_2x2_geometry.py --no-show
+
+# 只核对同材料对照配置；不启动 Abaqus
+pixi run -- python -B scripts/run_hardening_compare.py --check-only
+```
+
+不带 `--check-only` 运行硬化材料对照驱动会顺序执行两个完整 case（包括 solve）。
+
 ### 2026-09-20 补充：para_aly 24 组 Explicit 参数敏感性实验
 
 - 3 曲面 × mesh(0.18/0.25) × T(0.01/0.02s) × MS(OFF/9) = **24/24 DONE**（累计 3.59h），
@@ -414,17 +443,19 @@ batch 的 JSONL 读取、defaults 合并、重复 case_id、失败隔离、DONE/
 - 峰值应力对三参数稳健（≤±5%）；逐点影响排序：mesh > mass scaling > T
   （粗网格应力系统性偏高 4.1–4.5%，MS9 抬高软化解 2.4–4.1%，T 加倍降 1.5–3.8%）。
 - 耗时杠杆：MS9 加速 2.0–2.7×，T×2 → 1.9×，Fine→Coarse → 2.4×。
-- **全部 24 例 KE/IE=0.84–1.20，非准静态**（且对 T/MS 不敏感，动能来自坍塌带结构
-  动力学）；显式曲线作准静态解释前需做 T 收敛实验。
+- 全程 max KE/IE 为 0.84–1.20，峰值主要受启动阶段内能接近零影响；
+  按应变 ≥1% 重新筛选，24 例中 6 例峰值超过 1%。其余 18 例尚不能自动判为
+  准静态合格；显式曲线作准静态解释前仍需完整验收及 T 收敛实验。
 - 设计与分析全文：`docs/WORK_LOG.md` 条目 007；驱动脚本 `scripts/run_para_aly_*.py`。
 
 ### 2026-09-18 补充：ref30_02–05 implicit / explicit 实验（8CPU）
 
 - implicit（8CPU + `standard_parallel=all`）：datacheck 4/4 通过，**all 模式未复现历史
   threads-per-domain 错误**；solve 与历史同位失败（0.312 / 0.532 停滞、一例快速失败），
-  ref30_05 实际 ~28 min 跑完（final_strain 0.2000，KE/IE 0.53% 满足准静态）。
+  ref30_05 实际 ~28 min 跑完（final_strain 0.2000，全程 max KE/IE 0.53%，
+  低于 1% 能量阈值但不是综合准静态 PASS）。
 - explicit（8CPU，T=0.006s）4/4 DONE：final_strain ≈0.200、101 点曲线，solve 7.2–19.4 min；
-  **KE/IE ≈ 0.93–1.02，不满足准静态**——是真实动力响应，不能当准静态曲线解释。
+  全程 max KE/IE ≈ 0.93–1.02，启动阶段分母效应未排除，准静态质量待复核。
 - explicit T=0.01s 组用户暂停中（ref30_02 解到 83% 停止，其余未启动）。
 - 配置/驱动/逐例证据：`experiments/ref30_2to5_20260918/`、`work/exp_ref30_2to5_20260918/`；
   详细时间线与分析见 `docs/WORK_LOG.md`。
@@ -442,7 +473,7 @@ batch 的 JSONL 读取、defaults 合并、重复 case_id、失败隔离、DONE/
 - **Explicit smoke solve**：把 `time_period_s` 改成 1e-3 s（正式配置未改动；证据在
   `work/r2_explicit_smoke/`，配置示例在 `config/examples/simulation_explicit_smoke.json`），
   Abaqus/Explicit 真正跑完（88 s，`last_step_time = target = 0.001`）并提取出 101 点曲线，
-  `max_ke_ie_ratio ≈ 1.10` —— smoke 结果**不是**准静态，只证明链路通畅。
+  `max_ke_ie_ratio ≈ 1.10`；smoke 只证明链路通畅，未做准静态验收。
 - 用历史 Standard ODB 重新提取：60 点曲线与旧脚本逐点一致。
 - **真实小批量 batch**（4 个 case、workers=1、smoke simulation，`work/r3_smoke/batch_001/`）：
 
@@ -459,8 +490,9 @@ batch 的 JSONL 读取、defaults 合并、重复 case_id、失败隔离、DONE/
   被正确 settle 成 `DONE`（`recovered_from: INTERRUPTED`）且不重算；
   用 `run-case --case <batch>/fig1/case_used.json` 也能全部 skip（证明 case 身份按内容判断）。
 
-**没有**验证过的（不要当成结论）：Standard 20% 完整 solve、Explicit 20% 完整 solve、
-科学质量验收、workers>1 的真实并发（只用 mock 测过并发逻辑）、2 万个 case 的实际规模。
+**截至 2026-09-17 没有**验证过的（此后完成情况见上方各日期补充）：
+Standard 20% 完整 solve、Explicit 20% 完整 solve、科学质量验收、workers>1 的真实并发
+（当时只用 mock 测过并发逻辑）、2 万个 case 的实际规模。
 
 事故记录（历史证据，保留备查）：曾误用 `run-case` + 正式 `config/simulation.json` 启动过一次
 Standard solve，约 4 分钟后被手动终止（`work/r2_final_std/fig1/abaqus/fig1_solve.sta` 走到
