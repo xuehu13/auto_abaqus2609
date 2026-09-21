@@ -49,8 +49,9 @@ solve → extract → batch summary。
 ### 切换 Standard / Explicit
 
 `"solver"."type"` 改成 `"standard_dynamic_implicit"` 或 `"explicit_dynamic"`。
-两套参数块都留在文件里，切换不用删块；Explicit 的 `time_period_s`（T）决定动能占比，
-T 越短越快但越远离准静态。
+两套参数块都留在文件里，切换不用删块。Explicit 的 `time_period_s`（T）会影响
+计算时长和惯性响应；不能只凭 T 或全程 `max_ke_ie_ratio` 判定准静态，
+应检查加载阶段的能量曲线并做 T 收敛实验。
 
 ### 改材料
 
