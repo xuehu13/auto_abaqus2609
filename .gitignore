@@ -16,6 +16,7 @@ runs/
 mesh_cache/
 dataset_exports/
 output/
+/scripts/sigmoid_test_output/
 
 # Machine configuration and credentials. Examples remain reviewable.
 .env
