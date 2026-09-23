@@ -324,6 +324,20 @@ Data Check 和 Solve **就在 `abaqus/` 里跑**，不再把 deck 复制成新�
 （deck 被手改过就报 `*_ARTIFACT_MISMATCH`），solve 只接受 `DATACHECK_PASSED` /
 `DATACHECK_COMPLETED_WITH_WARNINGS` 的状态。
 
+`physical.inp` 默认通过 `*Include` 引用 `blocks/` 和 `ingredients/`，移动时应保留整个
+`abaqus/` 目录。需要一个可单独复制的 INP 时，用只读展开工具：
+
+```powershell
+pixi run -- python -B scripts/export_flat_inp.py `
+    work/<case>/abaqus/physical.inp `
+    work/inp_exports_<attempt>/<case>.inp
+```
+
+输出必须是尚不存在的文件；脚本递归展开 include，不修改历史 deck，也不启动 Abaqus。
+2026-09-23 已用 Abaqus 2026 对 `Coarse/T0p01/MS9/diverse_28` 的单文件导出做真实
+Data Check，完成标记正常。单文件适合直接提交 Job；CAE 中通过
+`File → Import → Model → Abaqus Input File` 导入，而不是按 `.cae` 文件打开。
+
 ## 结果文件
 
 | 文件 | 内容 |

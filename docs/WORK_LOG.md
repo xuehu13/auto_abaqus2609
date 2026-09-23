@@ -573,3 +573,20 @@ PASS，因为接触、PBC、局部惯性与曲线收敛还没有完整验收。�
   Matplotlib 3.10.9。生成图、配置快照和计算结果均留在 git-ignored `work/`。
 - 汇报 PPT 提到的 200 组组合与 73.5% 几何成功率，目前在仓库内未找到对应的
   原始数据或可重跑批量程序，保持待复核，不计入已验证的流水线能力。
+
+---
+
+## 009 — 2026-09-23 — 模块化 deck 导出为独立单文件 INP
+
+- 现有物理 deck 是 `physical.inp` + 9 个 `blocks/` / `ingredients/` include；这种形式
+  可直接供 Abaqus 使用，但移动时必须保持整个 `abaqus/` 目录结构。
+- 新增 `scripts/export_flat_inp.py`：递归展开 `*Include`，检测循环、缺失文件和越界路径，
+  输出必须不存在；只读源 deck，不覆盖历史结果，不启动 Abaqus。
+- 实测源：`work/para_aly/Coarse/T0p01/MS9/diverse_28/abaqus/physical.inp`。
+  输出：`work/inp_exports_20260923T203032/diverse_28_Coarse_T0p01_MS9.inp`，
+  465735 bytes，SHA256 `230755de2f641b6adcf790bb5c1ad59e6b1789b57c61df8b40d8b0ce5c90904a`；
+  核对为 0 条剩余 include、0 个绝对路径。
+- 真实 Abaqus 2026 Data Check：`job=diverse_28_flat_dc`，8 CPU，返回码 0，
+  `THE ANALYSIS HAS COMPLETED SUCCESSFULLY` / `Abaqus JOB ... COMPLETED`。
+  warnings 与模型原有接触/厚度诊断同类；本次只验证独立文件可被输入处理器读取，
+  没有重新 solve，也不新增科学质量结论。
